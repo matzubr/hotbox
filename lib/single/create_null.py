@@ -11,7 +11,10 @@ def main():
     
     if len(nodes)==1:
         node = nodes[0]
-        input,name = hou.ui.readInput("Name")
+        button, name = hou.ui.readInput("Name", buttons=("OK", "Cancel"), default_choice=0, close_choice=1)
+        if button != 0:
+            return
+        name = name.strip()
         if len(name)==0:
             name = node.name()
         node.createOutputNode("null",f"OUT_{name}")

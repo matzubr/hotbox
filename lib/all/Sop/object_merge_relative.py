@@ -3,39 +3,37 @@
 #buttoncolor:#1f1a12
 #hotkey:1
 
-import hou 
-from tkinter import Tk
+import hou
 
-def main():
-    nodes_string = Tk().clipboard_get()
-
-    network_panetab = getPane()
-    network_node = network_panetab.pwd()
-        
-    if not network_panetab:
-        return
-
-    for i,node in enumerate(nodes_string.split(" ")):
-
-        if not hou.node(node):
-            break
-
-        if network_node.childTypeCategory().name() in ["Sop"]:
-            objm = network_node.createNode("object_merge",f"MERGE_{node.split('/')[-1]}")
-            objm.setPosition(network_panetab.cursorPosition() + hou.Vector2(i*3,0) - hou.Vector2(0.5,0))
-            objm.parm("objpath1").set(objm.relativePathTo(hou.node(node)))
-            objm.parm("xformtype").set(1)
 
 def getPane():
     cursor_panetab = hou.ui.paneTabUnderCursor()
     if cursor_panetab and cursor_panetab.type() == hou.paneTabType.NetworkEditor:
         return cursor_panetab
-    else:
-        network_panetab = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
-        if network_panetab:
-            return network_panetab
-        else:
-            print(f"No Pane found")
-            return None
+    return hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
+
+
+def main():
+    network_panetab = getPane()
+    if not network_panetab:
+        print("No Network Editor found")
+        return
+    network_node = network_panetab.pwd()
+    if network_node.childTypeCategory().name() != "Sop":
+        hou.ui.setStatusMessage("Works in Sop networks only", severity=hou.severityType.Warning)
+        return
+
+    # Copied nodes are in the clipboard as space separated paths
+    paths = [path for path in hou.ui.getTextFromClipboard().split() if hou.node(path)]
+    if not paths:
+        hou.ui.setStatusMessage("No node paths in the clipboard: copy nodes first", severity=hou.severityType.Warning)
+        return
+
+    for i, path in enumerate(paths):
+        source = hou.node(path)
+        node = network_node.createNode("object_merge", f"MERGE_{source.name()}")
+        node.setPosition(network_panetab.cursorPosition() + hou.Vector2(i * 3, 0) - hou.Vector2(0.5, 0))
+        node.parm("objpath1").set(node.relativePathTo(source))
+        node.parm("xformtype").set(1)
 
 main()

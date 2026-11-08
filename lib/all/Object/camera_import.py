@@ -4,16 +4,18 @@
 #hotkey:w
 
 import sys
+from importlib import reload
 
-if sys.version_info.major == 3:
-    from importlib import reload
+import hou
 
-sys.path.append('//studio/tools/py_libs/camera_exchanger')
+CAM_TOOLS = "//studio/tools/py_libs/camera_exchanger"
+
+if CAM_TOOLS not in sys.path:
+    sys.path.append(CAM_TOOLS)
 try:
     import cam_tools
-except Exception as e:
-    print('Error importing cam_tools!')
-
-reload(cam_tools)
-
-cam_tools.init_import('houdini')
+except ImportError as e:
+    hou.ui.displayMessage(f"Can't import cam_tools from {CAM_TOOLS}:\n{e}", severity=hou.severityType.Error)
+else:
+    reload(cam_tools)
+    cam_tools.init_import("houdini")

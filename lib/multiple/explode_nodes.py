@@ -2,18 +2,21 @@
 #textcolor:#fff048
 
 import hou
-nodes = hou.selectedNodes()
+
 
 def nodes_centroid(nodes):
-    sum_pos = hou.Vector2(0,0)
+    sum_pos = hou.Vector2(0, 0)
     for node in nodes:
         sum_pos += node.position()
-    sum_pos /= len(nodes)
-    return sum_pos    
-    
+    return sum_pos / len(nodes)
+
+
 def explode_nodes(nodes):
+    if not nodes:
+        return
     centroid = nodes_centroid(nodes)
-    
-    [x.setPosition( ( x.position()-centroid ) * 2 + centroid) for x in nodes]
-   
-explode_nodes(nodes)
+    for node in nodes:
+        node.setPosition((node.position() - centroid) * 2 + centroid)
+
+
+explode_nodes(hou.selectedNodes())

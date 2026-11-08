@@ -1,7 +1,6 @@
 #label:Convert to $FILM
 #textcolor:#a0ceff
 
-from pprint import pprint as pp
 from pathlib import Path
 import hou
 
@@ -12,7 +11,10 @@ def main():
         return 0
 
     var_to_change = "$FILM"
-    var_expanded = hou.text.expandString(var_to_change)
+    var_expanded = hou.text.expandString(var_to_change).rstrip("/")
+    if not var_expanded or var_expanded == var_to_change:
+        hou.ui.displayMessage(f"{var_to_change} is not set")
+        return 0
 
     log_dict={}
 
@@ -68,7 +70,7 @@ def filter_multiparms(parms_names_list,node):
     for parm_name in multiparms:
         parm_object = node.parm(parm_name.replace("#","1"))
         if not parm_object:
-            return normal
+            continue
         
         multiparm_folder = parm_object.parentMultiParm()
         for i in range(1,multiparm_folder.eval()+1):

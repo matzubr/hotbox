@@ -1,13 +1,16 @@
-#label:Flipbook Studio
+#label:Flipbook
 #textcolor:#5bff77
 #buttoncolor:#0d121b
 #icon:app_dino_dance.svg
-#link:None
 #hotkey:f
 
+# DinoWrite: https://github.com/matzubr/DinoWrite (folder DinoWrite next to hotbox in python3.11libs)
 import hou
-from importlib import reload
-from dinowriter import ui
-reload(ui)
-kwargs = {"pane":hou.ui.paneTabUnderCursor()}
-ui.DinoWriter(kwargs)
+
+try:
+    import DinoWrite
+except ImportError:
+    hou.ui.displayMessage("DinoWrite is not installed: put the DinoWrite folder into python3.11libs",
+                          severity=hou.severityType.Error)
+else:
+    DinoWrite.show({"pane": hou.ui.paneTabUnderCursor()})

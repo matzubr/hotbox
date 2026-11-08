@@ -3,7 +3,7 @@
 #buttoncolor:#16182b
 #hotkey:2
 
-import hou,sys
+import hou
 import toolutils
 
 
@@ -25,60 +25,61 @@ def bake_selected(baking_node, chop_export_node):
         baking_node.parm(attr).setKeyframes(bake_data[attr])
 
 
-selected_nodes = hou.selectedNodes()
+def main():
+    selected_nodes = hou.selectedNodes()
+    if not selected_nodes or selected_nodes[0].type().name() != 'cam':
+        hou.ui.displayMessage('Select a "Camera" node', severity=hou.severityType.Error)
+        return
+    bake_camera(selected_nodes[0].path())
 
-source_cam = selected_nodes[0].path()
 
-if source_cam is None:
-    sys.exit()
+def bake_camera(source_cam):
+    node_cam_baked = hou.node("/obj").createNode("cam", "RENDER_CAMERA_baked")
+    node_cam_baked.setParmExpressions({"shutter": f"ch('{source_cam}/shutter')",
+                                       "focus": f"ch('{source_cam}/focus')",
+                                       "fstop": f"ch('{source_cam}/fstop')",
+                                       "aspect": f"ch('{source_cam}/aspect')"})
 
-if selected_nodes[0].type().name() != 'cam':
-    hou.ui.displayMessage('Selected node is not "Camera" node!', severity=hou.severityType.Error)
-    sys.exit()
+    node_cam_baked.setColor(hou.Color((1, 0.1, 0.1)))
+    node_cam_baked.moveToGoodPosition()
 
-node_cam_baked = hou.node("/obj").createNode("cam", "RENDER_CAMERA_baked")
-node_cam_baked.setParmExpressions({"shutter": f"ch('{source_cam}/shutter')",
-                                   "focus": f"ch('{source_cam}/focus')",
-                                   "fstop": f"ch('{source_cam}/fstop')",
-                                   "aspect": f"ch('{source_cam}/aspect')"})
+    chopnet = node_cam_baked.createNode("chopnet")
 
-node_cam_baked.setColor(hou.Color((1, 0.1, 0.1)))
-node_cam_baked.moveToGoodPosition()
+    chop_object = chopnet.createNode("object")
+    chop_object.setParms({"targetpath": source_cam,
+                          "compute": "transrot",
+                          "range": "full",
+                          "left": "slope",
+                          "right": "slope"})
 
-chopnet = node_cam_baked.createNode("chopnet")
+    chop_fetch = chopnet.createNode("fetch")
+    chop_fetch.setParms({"nodepath": source_cam,
+                         "path": "focal aperture",
+                         "range": "user",
+                         "units": "frames",
+                         "start": hou.playbar.frameRange()[0],
+                         "end": hou.playbar.frameRange()[1]})
 
-chop_object = chopnet.createNode("object")
-chop_object.setParms({"targetpath": source_cam,
-                      "compute": "transrot",
-                      "range": "full",
-                      "left": "slope",
-                      "right": "slope"})
+    chop_merge = chop_object.createOutputNode("merge")
+    chop_merge.setInput(1, chop_fetch, 0)
 
-chop_fetch = chopnet.createNode("fetch")
-chop_fetch.setParms({"nodepath": source_cam,
-                     "path": "focal aperture",
-                     "range": "user",
-                     "units": "frames",
-                     "start": hou.playbar.frameRange()[0],
-                     "end": hou.playbar.frameRange()[1]})
+    chop_export = chop_merge.createOutputNode("export")
+    chop_export.setParms({"nodepath": node_cam_baked.path(),
+                          "path": "t[xyz] r[xyz] focal aperture"})
 
-chop_merge = chop_object.createOutputNode("merge")
-chop_merge.setInput(1, chop_fetch, 0)
+    chopnet.layoutChildren()
+    chop_export.setExportFlag(1)
+    chop_export.setCurrentFlag(1)
+    chop_export.cook()
 
-chop_export = chop_merge.createOutputNode("export")
-chop_export.setParms({"nodepath": node_cam_baked.path(),
-                      "path": "t[xyz] r[xyz] focal aperture"})
+    bake_selected(node_cam_baked, chop_export)
+    chopnet.destroy()
 
-chopnet.layoutChildren()
-chop_export.setExportFlag(1)
-chop_export.setCurrentFlag(1)
-chop_export.cook()
+    scene_view = toolutils.sceneViewer()
+    viewport = scene_view.curViewport()
+    viewport.setCamera(node_cam_baked)
 
-bake_selected(node_cam_baked, chop_export)
-chopnet.destroy()
+    hou.ui.displayMessage('Selected camera succesfully baked to %s' % node_cam_baked.name())
 
-scene_view = toolutils.sceneViewer()
-viewport = scene_view.curViewport()
-viewport.setCamera(node_cam_baked)
 
-hou.ui.displayMessage('Selected camera succesfully baked to %s' % node_cam_baked.name())
+main()

@@ -1,42 +1,43 @@
 #label:Save HIP
 #textcolor:#6efb09
 
-from pathlib import Path
 import re
+from pathlib import Path
+
 import hou
 
+FRAME_PATTERN = re.compile(r"\.(\d+)\.")  # ".1001."
+
+
 def main():
-    job = hou.getenv("JOB")
-    activity = hou.getenv("ACTIVITY")
-    user = hou.getenv("CEREBRO_USER_NAME")
-    
+    job, activity, user = hou.getenv("JOB"), hou.getenv("ACTIVITY"), hou.getenv("CEREBRO_USER_NAME")
+    if not (job and activity and user):
+        hou.ui.displayMessage("$JOB, $ACTIVITY and $CEREBRO_USER_NAME must be set")
+        return
+
     shot = Path(job).stem
-    
-    name = f"{shot}_{activity}_v001.hip"
-    userdir = Path(job,activity,"work",user)
-    
+    userdir = Path(job, activity, "work", user)
     if not userdir.exists():
-        hou.ui.displayMessage("No user dir found")
-        return 0
-    
-    filepath = Path(userdir,"houdini",name)
-    
+        hou.ui.displayMessage(f"No user dir found:\n{userdir.as_posix()}")
+        return
+
+    filepath = Path(userdir, "houdini", f"{shot}_{activity}_v001.hip")
     if not filepath.exists():
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         hou.hipFile.save(filepath.as_posix())
-    
-    hires_folder = Path(job,"source","hires")
-    
-    hires_folders = [x for x in hires_folder.iterdir() if x.is_dir()]
-    if len(hires_folders)==0:
-        hou.ui.displayMessage("No hires")
-        return 0
-        
-    hires_folder_source = sorted(hires_folders)[-1]
-    source_folder = hires_folder / hires_folder_source
-    
-    pattern = r"\.\d+\." #find string like ".1001."
-    frame_ranges=[int(re.search(pattern,x.name).group()[1:-1]) for x in source_folder.iterdir() if re.search(pattern,x.name)]
-    hou.playbar.setFrameRange(min(frame_ranges),max(frame_ranges))
+
+    hires_folder = Path(job, "source", "hires")
+    hires_folders = sorted(x for x in hires_folder.iterdir() if x.is_dir()) if hires_folder.is_dir() else []
+    if not hires_folders:
+        hou.ui.displayMessage(f"No hires in {hires_folder.as_posix()}")
+        return
+
+    frames = [int(m.group(1)) for x in hires_folders[-1].iterdir() if (m := FRAME_PATTERN.search(x.name))]
+    if not frames:
+        hou.ui.displayMessage(f"No frames in {hires_folders[-1].as_posix()}")
+        return
+    hou.playbar.setFrameRange(min(frames), max(frames))
     hou.playbar.setRealTime(True)
+
 
 main()
