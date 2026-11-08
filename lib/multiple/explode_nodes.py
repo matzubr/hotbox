@@ -1,5 +1,6 @@
 #label:Explode Nodes
 #textcolor:#fff048
+#icon:explode.svg
 
 import hou
 

@@ -8,11 +8,12 @@ The old entry point `from hotbox import main; main.start()` still works.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import hou
 
-from .utils import runner, scripts, utility, widgets
+from .utils import manager, runner, scripts, utility, widgets
 from .utils.qt import (
     QCursor,
     QDesktopServices,
@@ -85,9 +86,14 @@ class HotBox(QWidget):
         central_layout.setAlignment(Qt.AlignHCenter)
 
         layout = QVBoxLayout()
+        # Room around the buttons for the press zoom (painted by the overlay)
+        margin = math.ceil(widgets.Button.WIDTH * (widgets.Button.PRESS_SCALE - 1) / 2) + 2
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(widgets.ScriptGrid.ROW_GAP * 2)
         layout.addWidget(self.scripts_buttons, 0, Qt.AlignHCenter)
         layout.addLayout(central_layout)
         self.setLayout(layout)
+        self.animationOverlay = widgets.AnimationOverlay(self)
 
         actions = {button: (lambda s=button.script: self.runScript(s)) for button in self.scripts_buttons.buttons}
         actions[self.open_hotbox_button] = self.openHotboxFolder
@@ -95,6 +101,16 @@ class HotBox(QWidget):
         actions[self.script_manager_button] = self.startManager
         for button, action in actions.items():
             button.clicked.connect(lambda checked=False, b=button, a=action: self.trigger(b, a))
+
+    def mousePressEvent(self, event):
+        """A click inside the hotbox but not on a button closes it, like a click outside.
+        Buttons take their clicks; empty space (gaps, group frames, margins) passes them up to here."""
+        self.close()
+
+    def resizeEvent(self, event):
+        self.animationOverlay.setGeometry(self.rect())
+        self.animationOverlay.raise_()
+        super().resizeEvent(event)
 
     def trigger(self, button, action=None):
         """Pressed button grows and fades out, the menu fades out with it, then the action runs.
@@ -139,7 +155,7 @@ class HotBox(QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(PACKAGE_DIR.as_posix()))
 
     def startManager(self):
-        return widgets.ScriptManager(lib_folder=self.lib_dir)
+        return manager.ScriptManager(lib_folder=self.lib_dir)
 
     def setPositionFromMouse(self):
         """Center under the mouse, kept inside the screen"""

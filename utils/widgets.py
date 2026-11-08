@@ -8,8 +8,6 @@ import hou
 from . import scripts as script_lib
 from .qt import (
     QColor,
-    QComboBox,
-    QDesktopServices,
     QEasingCurve,
     QFont,
     QFontDatabase,
@@ -19,21 +17,17 @@ from .qt import (
     QHBoxLayout,
     QIcon,
     QKeySequence,
-    QLabel,
-    QLineEdit,
-    QListWidget,
     QPainter,
     QPainterPath,
     QPixmap,
+    QPoint,
     QPointF,
     QPushButton,
     QRadialGradient,
     QRectF,
     QSize,
     Qt,
-    QUrl,
     QVariantAnimation,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -67,10 +61,10 @@ def buttonFont(size: float = FONT_SIZE) -> QFont:
     return font
 
 
-def fitText(text: str, width: int, max_lines: int = 2) -> tuple[list[str], QFont]:
+def fitText(text: str, width: int, max_lines: int = 2, size: float = FONT_SIZE) -> tuple[list[str], QFont]:
     """Word wrap measured in pixels; when it takes more than max_lines the font gets smaller"""
-    for size in (FONT_SIZE, FONT_SIZE - 2, FONT_SIZE - 3):
-        font = buttonFont(size)
+    for font_size in (size, size - 2, size - 3):
+        font = buttonFont(font_size)
         metrics = QFontMetrics(font)
         lines: list[str] = []
         for word in text.split():
@@ -122,47 +116,61 @@ def _eventPos(event) -> QPointF:
     return QPointF(event.position()) if hasattr(event, "position") else QPointF(event.pos())
 
 
+def resolveIcon(icon) -> QIcon | None:
+    """QIcon from a QIcon/QPixmap, a file in icons/ ('dino.svg') or a Houdini icon name ('SOP_null',
+    the names node.type().icon() returns). None when there is no such icon."""
+    if isinstance(icon, QIcon):
+        return None if icon.isNull() else icon
+    if isinstance(icon, QPixmap):
+        return QIcon(icon)
+    if not icon:
+        return None
+    filepath = ICONS_DIR / icon
+    if filepath.is_file():
+        return QIcon(filepath.as_posix())
+    try:
+        qicon = hou.qt.Icon(icon)
+    except Exception:  # noqa: BLE001  hou.OperationFailed and friends for unknown names
+        qicon = None
+    if isinstance(qicon, QIcon) and not qicon.isNull():
+        return qicon
+    return None
+
+
 class Button(QPushButton):
     """Rounded button painted by hand so it can animate:
 
-    - hover: a white wave spreads from the cursor, the button gets lighter and a bit bigger (text too)
+    - hover: a white wave spreads from the cursor, the button gets lighter and bigger (text too)
     - press (playPress): grows and fades out
 
-    The widget is larger than the visible button by MARGIN so the zoom is never cut off.
+    While it is zoomed, the window's AnimationOverlay paints it on top of everything, so the zoom is not cut
+    by the widget and buttons don't need empty space around them.
     """
 
     WIDTH, HEIGHT, RADIUS = 200, 60, 10
-    HOVER_SCALE, PRESS_SCALE = 1.05, 1.12
+    HOVER_SCALE, PRESS_SCALE = 1.07, 1.19
     HOVER_WHITE = 0.10  # background towards white on hover
     RIPPLE_ALPHA = 0.35
     HOVER_MS, RIPPLE_MS, PRESS_MS = 150, 450, 220
-    MARGIN_X = math.ceil(WIDTH * (PRESS_SCALE - 1) / 2)
-    MARGIN_Y = math.ceil(HEIGHT * (PRESS_SCALE - 1) / 2)
+    ICON_SIZE = 28
 
     def __init__(self, label: str = "ButtonText", buttonColor: str = "#222222", textColor: str = "#e8e8e8",
-                 icon=None, parent=None):
+                 icon=None, parent=None, size: tuple[int, int] | None = None, fontSize: float = FONT_SIZE):
         super().__init__(parent)
+        self.buttonWidth, self.buttonHeight = size or (self.WIDTH, self.HEIGHT)
+        self.fontSize = fontSize
         self.hover = 0.0
         self.ripple = 1.0  # 1: finished
         self.press = 0.0
-        self.ripplePos = QPointF(self.WIDTH / 2, self.HEIGHT / 2)
-        self.iconPixmap = None
+        self.ripplePos = QPointF(self.buttonWidth / 2, self.buttonHeight / 2)
         self._hoverAnimation = self._animation(self.HOVER_MS, "hover", QEasingCurve.OutCubic)
         self._rippleAnimation = self._animation(self.RIPPLE_MS, "ripple", QEasingCurve.OutQuad)
         self._pressAnimation = self._animation(self.PRESS_MS, "press", QEasingCurve.OutCubic)
 
-        if isinstance(icon, (QIcon, QPixmap)):
-            self.setIcon(QIcon(icon) if isinstance(icon, QPixmap) else icon)
-        elif icon:
-            filepath = ICONS_DIR / icon
-            if filepath.exists():
-                self.setIcon(QIcon(filepath.as_posix()))
-            else:
-                print(f"HotBox: no icon {filepath.as_posix()}")
-
+        self.setButtonIcon(icon)
         self.updateColors(buttonColor, textColor)
         self.updateText(label)
-        self.setFixedSize(QSize(self.WIDTH + 2 * self.MARGIN_X, self.HEIGHT + 2 * self.MARGIN_Y))
+        self.setFixedSize(QSize(self.buttonWidth, self.buttonHeight))
         self.setFocusPolicy(Qt.ClickFocus)
         self.setAttribute(Qt.WA_Hover)
 
@@ -173,7 +181,7 @@ class Button(QPushButton):
 
         def apply(value, attribute=attribute):
             setattr(self, attribute, float(value))
-            self.update()
+            self.repaint_()
 
         animation.valueChanged.connect(apply)
         return animation
@@ -185,13 +193,36 @@ class Button(QPushButton):
         animation.setEndValue(float(end))
         animation.start()
 
+    def overlay(self):
+        """AnimationOverlay of the window, None outside the hotbox"""
+        widget = self.parentWidget()
+        while widget is not None:
+            overlay = getattr(widget, "animationOverlay", None)
+            if overlay is not None:
+                return overlay
+            widget = widget.parentWidget()
+        return None
+
+    def repaint_(self):
+        self.update()
+        overlay = self.overlay()
+        if overlay is not None:
+            overlay.update()
+
     # --- appearance ---------------------------------------------------------------------------------------------
+
+    def setButtonIcon(self, icon):
+        qicon = resolveIcon(icon)
+        if icon and qicon is None and not isinstance(icon, (QIcon, QPixmap)):
+            print(f"HotBox: no icon '{icon}' (not in icons/ and not a Houdini icon)")
+        self.setIcon(qicon or QIcon())
 
     def updateText(self, text: str):
         self.label = text
         self.setText(text)
-        icon_width = 32 if not self.icon().isNull() else 0
-        self.lines, self.labelFont = fitText(text, self.WIDTH - 24 - icon_width)
+        icon_width = self.ICON_SIZE + 6 if not self.icon().isNull() else 0
+        self.lines, self.labelFont = fitText(text, self.buttonWidth - 24 - icon_width, size=self.fontSize)
+        self.update()
 
     def updateColors(self, buttonColor="#222222", textColor="#e8e8e8"):
         self.baseColor = QColor(buttonColor)
@@ -207,15 +238,24 @@ class Button(QPushButton):
 
     def visualRect(self) -> QRectF:
         """The button at rest, in widget coordinates"""
-        return QRectF(self.MARGIN_X, self.MARGIN_Y, self.WIDTH, self.HEIGHT)
+        return QRectF(0, 0, self.buttonWidth, self.buttonHeight)
+
+    def isAnimated(self) -> bool:
+        return self.scale() > 1.0005 or self.press > 0 or self.ripple < 1.0
 
     def paintEvent(self, event):
+        if self.isAnimated() and self.overlay() is not None:
+            return  # the overlay paints the zoomed button
         painter = QPainter(self)
+        self.paintTo(painter, self.visualRect())
+        painter.end()
+
+    def paintTo(self, painter: QPainter, rect: QRectF):
+        """Paint the button with its current animation state into rect (the button at rest)"""
+        painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
         painter.setOpacity(1.0 - self.press)
-
-        rect = self.visualRect()
         center = rect.center()
         painter.translate(center)
         painter.scale(self.scale(), self.scale())
@@ -228,7 +268,7 @@ class Button(QPushButton):
         if self.ripple < 1.0:  # white wave from the cursor
             radius = max(1.0, math.hypot(rect.width(), rect.height()) * self.ripple)
             alpha = self.RIPPLE_ALPHA * (1.0 - self.ripple)
-            gradient = QRadialGradient(self.ripplePos, radius)
+            gradient = QRadialGradient(self.ripplePos + rect.topLeft(), radius)
             gradient.setColorAt(0.0, QColor(255, 255, 255, int(255 * alpha * 0.35)))
             gradient.setColorAt(0.8, QColor(255, 255, 255, int(255 * alpha)))
             gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
@@ -243,14 +283,14 @@ class Button(QPushButton):
         text_width = max(metrics.horizontalAdvance(line) for line in self.lines)
         text_height = metrics.height() * len(self.lines)
         icon = self.icon()
-        icon_size = 28 if not icon.isNull() else 0
+        icon_size = self.ICON_SIZE if not icon.isNull() else 0
         gap = 6 if icon_size else 0
-        x = rect.center().x() - (icon_size + gap + text_width) / 2
+        x = center.x() - (icon_size + gap + text_width) / 2
         if icon_size:
-            icon.paint(painter, int(x), int(rect.center().y() - icon_size / 2), icon_size, icon_size)
-        text_rect = QRectF(x + icon_size + gap, rect.center().y() - text_height / 2, text_width, text_height)
+            icon.paint(painter, int(x), int(center.y() - icon_size / 2), icon_size, icon_size)
+        text_rect = QRectF(x + icon_size + gap, center.y() - text_height / 2, text_width, text_height)
         painter.drawText(text_rect, Qt.AlignCenter, "\n".join(self.lines))
-        painter.end()
+        painter.restore()
 
     # --- animation ----------------------------------------------------------------------------------------------
 
@@ -264,6 +304,7 @@ class Button(QPushButton):
 
     def playPress(self, finished=None):
         """Grow and fade out; finished() is called at the end"""
+        self.raise_()
         if finished is not None:
             self._pressAnimation.finished.connect(finished)
         self._run(self._pressAnimation, 0.0, 1.0)
@@ -275,6 +316,36 @@ class Button(QPushButton):
     def leaveEvent(self, event):
         self.endHover()
         super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        self.ripplePos = _eventPos(event)
+        self._run(self._rippleAnimation, 0.0, 1.0)  # a wave from the click point
+        super().mousePressEvent(event)
+
+
+class AnimationOverlay(QWidget):
+    """Transparent layer over the whole window painting the zoomed (hovered/pressed) buttons on top.
+
+    The owner sets `self.animationOverlay = AnimationOverlay(self)` and keeps it on top and full size.
+    """
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+        self.setGeometry(parent.rect())
+        self.raise_()
+
+    def paintEvent(self, event):
+        owner = self.parentWidget()
+        buttons = [b for b in owner.findChildren(Button) if b.isVisible() and b.isAnimated()]
+        if not buttons:
+            return
+        painter = QPainter(self)
+        for button in sorted(buttons, key=lambda b: (b.press, b.hover)):  # the pressed one on top
+            top_left = QPointF(button.mapTo(owner, QPoint(0, 0)))
+            button.paintTo(painter, button.visualRect().translated(top_left))
+        painter.end()
 
 
 class ScriptButton(Button):
@@ -300,15 +371,17 @@ class ScriptGrid(QWidget):
     """Buttons on one grid, so every row is on the same level in all columns.
 
     Columns go top to bottom: context scripts first, then root scripts in their own column(s); a column
-    takes at most MAX_ROWS buttons, then the next one starts. #group blocks are never split, their frame and
-    caption are painted behind the buttons in the gap above them.
+    takes at most MAX_ROWS buttons, then the next one starts. #group blocks are never split.
+    Gaps are grid rows/columns of their own: the gap above a group makes room for its frame and caption,
+    and the same gap is used in every column, so rows stay aligned.
     """
 
     MAX_ROWS = 6
-    ROW_GAP = 18  # between button widgets (the visible gap adds 2 * Button.MARGIN_Y)
-    COLUMN_GAP = 4  # (+ 2 * Button.MARGIN_X)
+    ROW_GAP = 12  # between buttons
+    COLUMN_GAP = 14
     CAPTION_HEIGHT = 16
-    FRAME_PAD = 5
+    FRAME_PAD = 8  # between buttons and their group frame
+    FRAME_GAP = 8  # between a group frame and the buttons/frames around it
 
     def __init__(self, scripts: list[script_lib.Script], context: str = "", parent: QWidget = None):
         super().__init__(parent)
@@ -329,15 +402,22 @@ class ScriptGrid(QWidget):
                 self.columns.append(blocks)
 
         layout = QGridLayout(self)
-        layout.setContentsMargins(self.FRAME_PAD, self.CAPTION_HEIGHT + 4, self.FRAME_PAD, 4)
-        layout.setHorizontalSpacing(self.COLUMN_GAP)
-        layout.setVerticalSpacing(self.ROW_GAP)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         for column_index, column in enumerate(self.columns):
             row = 0
             for _name, buttons in column:
                 for button in buttons:
-                    layout.addWidget(button, row, column_index, Qt.AlignTop)
+                    layout.addWidget(button, 2 * row + 1, 2 * column_index + 1)
                     row += 1
+        for index, gap in enumerate(self.rowGaps()):
+            layout.setRowMinimumHeight(2 * index, gap)
+        column_gaps = self.columnGaps()
+        for index, gap in enumerate(column_gaps):
+            layout.setColumnMinimumWidth(2 * index, gap)
+        # Extra space (if the widget is bigger than needed) goes to the end, gaps stay as computed
+        layout.setRowStretch(2 * len(self.rowGaps()), 1)
+        layout.setColumnStretch(2 * len(column_gaps), 1)
 
         for key, paths in script_lib.duplicateHotkeys(in_context + root).items():
             print(f"HotBox: hotkey '{key}' is used by several scripts, the last one wins: {', '.join(paths)}")
@@ -351,16 +431,51 @@ class ScriptGrid(QWidget):
             columns[-1].append(block)
         return [column for column in columns if column]
 
-    def buttonRow(self, button) -> int:
-        layout = self.layout()
-        return layout.getItemPosition(layout.indexOf(button))[0]
+    def _columnRows(self, column) -> list[tuple[str, bool, bool]]:
+        """(group, first in group, last in group) for each row of a column"""
+        rows = []
+        for name, buttons in column:
+            for index in range(len(buttons)):
+                rows.append((name, index == 0, index == len(buttons) - 1))
+        return rows
+
+    def rowGaps(self) -> list[int]:
+        """Height of the gap above each button row and below the last one"""
+        row_count = max((sum(len(b) for _, b in column) for column in self.columns), default=0)
+        gaps = [0] + [self.ROW_GAP] * (row_count - 1) + [0] if row_count else []
+        frame_top = self.CAPTION_HEIGHT + 4
+        for column in self.columns:
+            rows = self._columnRows(column)
+            for boundary in range(len(rows) + 1):
+                above = rows[boundary - 1] if boundary > 0 else None
+                below = rows[boundary] if boundary < len(rows) else None
+                need = 0
+                if above and above[0] and above[2]:
+                    need += self.FRAME_PAD  # frame bottom of the group above
+                if below and below[0] and below[1]:
+                    need += frame_top  # caption and frame top of the group below
+                if need and above and below:
+                    need += self.FRAME_GAP
+                gaps[boundary] = max(gaps[boundary], need)
+        return gaps
+
+    def columnGaps(self) -> list[int]:
+        """Width of the gap left of each column and right of the last one"""
+        grouped = [any(name for name, _ in column) for column in self.columns]
+        pad = [self.FRAME_PAD if g else 0 for g in grouped]
+        gaps = [pad[0]] if grouped else []
+        for index in range(1, len(grouped)):
+            gaps.append(pad[index - 1] + self.COLUMN_GAP + pad[index])
+        if grouped:
+            gaps.append(pad[-1])
+        return gaps
 
     def groupFrame(self, buttons) -> QRectF:
         rect = QRectF()
         for button in buttons:
             rect = rect.united(button.visualRect().translated(QPointF(button.pos())))
         pad = self.FRAME_PAD
-        return rect.adjusted(-pad, -(self.CAPTION_HEIGHT + 2), pad, pad)
+        return rect.adjusted(-pad, -(self.CAPTION_HEIGHT + 4), pad, pad)
 
     def paintEvent(self, event):
         if not self.groups:
@@ -375,7 +490,7 @@ class ScriptGrid(QWidget):
             painter.drawRoundedRect(frame, 12, 12)
             painter.setFont(caption_font)
             painter.setPen(QColor(232, 232, 232, 150))
-            caption = QRectF(frame.left() + 10, frame.top() + 1, frame.width() - 20, self.CAPTION_HEIGHT)
+            caption = QRectF(frame.left() + 10, frame.top() + 3, frame.width() - 20, self.CAPTION_HEIGHT)
             painter.drawText(caption, Qt.AlignLeft | Qt.AlignVCenter, name)
         painter.end()
 
@@ -407,207 +522,3 @@ class HSeparator(QFrame):
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Raised)
         self.setLineWidth(1)
-
-
-class ScriptManager(QWidget):
-    """Browse library scripts and edit their header settings (written back into the script files)"""
-
-    ROOT_ITEM = "(root)"
-
-    def __init__(self, lib_folder: Path, parent=None):
-        super().__init__(parent or hou.qt.mainWindow())
-        self.lib = Path(lib_folder)
-        self.scripts: list[script_lib.Script] = []
-
-        self.setWindowTitle("Script Manager")
-        self.setGeometry(300, 300, 1000, 400)
-        self.setWindowFlags(Qt.Window)
-        self.setAttribute(Qt.WA_DeleteOnClose)
-        self.initUI()
-
-    def initUI(self):
-        main_layout = QHBoxLayout()
-        main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-
-        self.mode_combobox = QComboBox()
-        self.mode_combobox.addItems(list(script_lib.MODES))
-        self.folders_list = QListWidget()
-        self.files_list = QListWidget()
-
-        fc_layout = QVBoxLayout()
-        fc_layout.addWidget(self.mode_combobox)
-        fc_layout.addWidget(self.folders_list)
-
-        sc_layout = QVBoxLayout()
-        sc_layout.addWidget(self.files_list)
-
-        self.name_lineedit = QLineEdit()
-        self.group_lineedit = QLineEdit()
-        self.group_lineedit.setPlaceholderText("buttons of one group stand together")
-        self.button_color_swatch = hou.qt.ColorSwatchButton()
-        self.text_color_swatch = hou.qt.ColorSwatchButton()
-        self.icon_lineedit = QLineEdit()
-        self.icon_lineedit.setPlaceholderText("file name in icons/")
-        self.hotkey_lineedit = QLineEdit()
-        self.hotkey_lineedit.setPlaceholderText("g, 1, F5...")
-        self.file_lineedit = QLineEdit()
-        self.file_lineedit.setReadOnly(True)
-        self.ref_label = QLabel()
-        self.warning_label = QLabel()
-        self.warning_label.setStyleSheet("color:#ffb04a")
-        self.warning_label.setWordWrap(True)
-        self.save_button = QPushButton("Save")
-        self.open_button = QPushButton("Open file")
-
-        tc_layout = QVBoxLayout()
-        tc_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        tc_layout.addLayout(HLayout([QLabel("Name"), self.name_lineedit]))
-        tc_layout.addLayout(HLayout([QLabel("Group"), self.group_lineedit]))
-        tc_layout.addLayout(HLayout([QLabel("Button Color"), self.button_color_swatch]))
-        tc_layout.addLayout(HLayout([QLabel("Text Color"), self.text_color_swatch]))
-        tc_layout.addLayout(HLayout([QLabel("Icon"), self.icon_lineedit]))
-        tc_layout.addLayout(HLayout([QLabel("Hotkey"), self.hotkey_lineedit]))
-        tc_layout.addWidget(self.warning_label)
-        tc_layout.addLayout(HLayout([self.save_button, self.open_button]))
-        tc_layout.addWidget(HSeparator())
-        tc_layout.addLayout(HLayout([QLabel("File"), self.file_lineedit]))
-        tc_layout.addWidget(self.ref_label)
-
-        main_layout.addLayout(fc_layout)
-        main_layout.addLayout(sc_layout)
-        main_layout.addLayout(tc_layout)
-        self.setLayout(main_layout)
-
-        self.mode_combobox.currentIndexChanged.connect(self.updateScripts)
-        self.folders_list.currentRowChanged.connect(self.updateFilesList)
-        self.files_list.currentRowChanged.connect(self.updateInfo)
-        self.hotkey_lineedit.textChanged.connect(self.updateWarnings)
-        self.icon_lineedit.textChanged.connect(self.updateWarnings)
-        self.save_button.clicked.connect(self.save)
-        self.open_button.clicked.connect(self.openFile)
-        self.updateScripts()
-        self.show()
-
-    def currentFolder(self) -> str | None:
-        item = self.folders_list.currentItem()
-        if item is None:
-            return None
-        return "" if item.text() == self.ROOT_ITEM else item.text()
-
-    def folderScripts(self) -> list[script_lib.Script]:
-        folder = self.currentFolder()
-        if folder is None:
-            return []
-        return [s for s in self.scripts if s.context == folder]
-
-    def updateScripts(self):
-        self.scripts = script_lib.scanScripts(self.lib / self.mode_combobox.currentText())
-        folders = sorted({s.context for s in self.scripts})
-        self.folders_list.clear()
-        self.folders_list.addItems([folder or self.ROOT_ITEM for folder in folders])
-        if folders:
-            self.folders_list.setCurrentRow(0)
-        else:
-            self.updateFilesList()
-
-    def updateFilesList(self):
-        self.files_list.clear()
-        files = [s.path.name for s in self.folderScripts()]
-        self.files_list.addItems(files)
-        if files:
-            self.files_list.setCurrentRow(0)
-        else:
-            self.updateInfo()
-
-    def currentScript(self) -> script_lib.Script | None:
-        row = self.files_list.currentRow()
-        folder_scripts = self.folderScripts()
-        return folder_scripts[row] if 0 <= row < len(folder_scripts) else None
-
-    def updateInfo(self):
-        """Fields show the script's own header; inherited values (from #ref) are placeholders"""
-        script = self.currentScript()
-        own = script.ownSettings if script else {}
-        merged = script.settings if script else {}
-        for lineedit, key in ((self.name_lineedit, "label"), (self.group_lineedit, "group"),
-                              (self.icon_lineedit, "icon"), (self.hotkey_lineedit, "hotkey")):
-            lineedit.setText(own.get(key, ""))
-        self.name_lineedit.setPlaceholderText(script.label if script else "")
-        self.group_lineedit.setPlaceholderText(merged.get("group", "") or "buttons of one group stand together")
-        self.icon_lineedit.setPlaceholderText(merged.get("icon", "") or "file name in icons/")
-        self.file_lineedit.setText(script.path.as_posix() if script else "")
-        if script and script.ref:
-            self.ref_label.setText(f"#ref → {script.ref}" + (f"  ({script.error})" if script.error else ""))
-        else:
-            self.ref_label.setText("")
-        if script:
-            self.button_color_swatch.setColor(QColor(script.buttoncolor))
-            self.text_color_swatch.setColor(QColor(script.textcolor))
-        for widget in (self.save_button, self.open_button):
-            widget.setEnabled(script is not None)
-        self.updateWarnings()
-
-    def warnings(self) -> list[str]:
-        script = self.currentScript()
-        if script is None:
-            return []
-        messages = []
-        hotkey = self.hotkey_lineedit.text().strip()
-        if hotkey and keyCode(hotkey) is None:
-            messages.append(f"'{hotkey}' is not a key")
-        conflicts = script_lib.hotkeyConflicts(self.scripts, script, hotkey)
-        if conflicts:
-            messages.append(f"Hotkey '{hotkey}' is also used by: {', '.join(conflicts)}")
-        icon = self.icon_lineedit.text().strip()
-        if icon and not (ICONS_DIR / icon).exists():
-            messages.append(f"No icon icons/{icon}")
-        return messages
-
-    def updateWarnings(self):
-        self.warning_label.setText("\n".join(self.warnings()))
-
-    def editedSettings(self) -> dict:
-        """The script's own header after editing. Values equal to the inherited/default ones that the
-        header didn't set are not written: a #ref stub stays a stub."""
-        script = self.currentScript()
-        if script is None:
-            return {}
-        own = dict(script.ownSettings)
-        inherited = {k: v for k, v in script.settings.items() if k not in own}
-        edited = {
-            "label": self.name_lineedit.text().strip(),
-            "group": self.group_lineedit.text().strip(),
-            "buttoncolor": self.button_color_swatch.color().name(),
-            "textcolor": self.text_color_swatch.color().name(),
-            "icon": self.icon_lineedit.text().strip(),
-            "hotkey": self.hotkey_lineedit.text().strip(),
-        }
-        for key, value in edited.items():
-            fallback = inherited.get(key) or script_lib.DEFAULTS.get(key, "")
-            if key not in own and value.lower() == fallback.lower():
-                continue
-            own[key] = value
-        return own
-
-    def save(self):
-        script = self.currentScript()
-        if script is None:
-            return
-        script_lib.writeHeader(script.path, self.editedSettings())
-        folder_row, file_row = self.folders_list.currentRow(), self.files_list.currentRow()
-        self.scripts = script_lib.scanScripts(self.lib / self.mode_combobox.currentText())
-        self.folders_list.setCurrentRow(folder_row)
-        self.files_list.setCurrentRow(file_row)
-        self.updateInfo()
-
-    def openFile(self):
-        script = self.currentScript()
-        if script is not None:  # the code: the ref target for a #ref
-            path = script.runPath or script.path
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path.as_posix()))
-
-    def keyPressEvent(self, event):
-        if int(event.key()) == int(Qt.Key_Escape):
-            self.close()
-            return
-        super().keyPressEvent(event)

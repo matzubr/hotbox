@@ -1,5 +1,6 @@
 #label:Save HIP
 #textcolor:#6efb09
+#icon:save.svg
 
 import re
 from pathlib import Path

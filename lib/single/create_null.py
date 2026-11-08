@@ -1,5 +1,6 @@
 #label:Create Null
 #textcolor:#ff8b48
+#icon:SOP_null
 
 import hou
 

@@ -5,6 +5,8 @@ import pytest
 import shiboken6
 from conftest import write_script
 from hotbox.utils import scripts
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QColor
 
 
 @pytest.fixture
@@ -112,9 +114,7 @@ def test_button_hover_and_press_animation(houdini, qapp):
     QTest.qWait(Button.PRESS_MS + 100)
     assert done and button.press == 1.0 and button.scale() == Button.PRESS_SCALE
 
-    # the press zoom fits in the widget
-    rect = button.visualRect()
-    assert rect.width() * Button.PRESS_SCALE <= button.width() and rect.height() * Button.PRESS_SCALE <= button.height()
+    assert button.size().width() == Button.WIDTH  # no empty space around buttons any more
 
 
 def _hotbox(monkeypatch, hou, library, context="Sop"):
@@ -215,7 +215,7 @@ def test_detect_context(hou, monkeypatch):
 
 
 def test_script_manager_browses_without_errors(houdini, library):
-    from hotbox.utils.widgets import ScriptManager
+    from hotbox.utils.manager import ScriptManager
 
     manager = ScriptManager(lib_folder=library)
     folders = [manager.folders_list.item(i).text() for i in range(manager.folders_list.count())]
@@ -245,7 +245,7 @@ def test_show_reloads_changed_code(houdini, hou, monkeypatch):
 
 
 def test_script_manager_saves_header(houdini, library):
-    from hotbox.utils.widgets import ScriptManager
+    from hotbox.utils.manager import ScriptManager
 
     manager = ScriptManager(lib_folder=library)
     manager.folders_list.setCurrentRow(2)  # Sop: merge_abs.py ("2"), merge_rel.py ("1")
@@ -266,7 +266,7 @@ def test_script_manager_saves_header(houdini, library):
 
 
 def test_script_manager_keeps_ref_stub_a_stub(houdini, library):
-    from hotbox.utils.widgets import ScriptManager
+    from hotbox.utils.manager import ScriptManager
 
     stub = write_script(library, "multiple/merge.py", "#ref:all/Sop/merge_abs.py\n", body="")
     manager = ScriptManager(lib_folder=library)
@@ -278,4 +278,104 @@ def test_script_manager_keeps_ref_stub_a_stub(houdini, library):
     manager.save()
 
     assert stub.read_text(encoding="utf-8") == "#ref:all/Sop/merge_abs.py\n#hotkey:m\n"
+    manager.close()
+
+
+def test_zoomed_button_is_painted_by_the_overlay(houdini, hou, library, monkeypatch):
+    from hotbox.utils.widgets import Button
+    from PySide6.QtTest import QTest
+
+    box = _hotbox(monkeypatch, hou, library)
+    button = box.scripts_buttons.buttons[0]
+    painted = []
+    original = Button.paintTo
+    monkeypatch.setattr(Button, "paintTo", lambda self, painter, rect: (painted.append((self, rect)),
+                                                                        original(self, painter, rect)))
+    button.startHover()
+    QTest.qWait(Button.HOVER_MS + 50)
+    painted.clear()
+    box.animationOverlay.repaint()
+
+    # the zoomed button is painted once, by the overlay, in window coordinates (its own paintEvent skips it)
+    rects = [rect for b, rect in painted if b is button]
+    assert len(rects) == 1
+    assert rects[0].topLeft().toPoint() == button.mapTo(box, QPoint(0, 0)) != QPoint(0, 0)
+    # the press zoom fits in the hotbox margins
+    margin = box.layout().contentsMargins().left()
+    assert Button.WIDTH * (Button.PRESS_SCALE - 1) / 2 <= margin
+
+
+def test_gaps_between_buttons_and_around_groups(houdini, library):
+    from hotbox.utils.widgets import ScriptGrid
+
+    write_script(library, "all/Sop/vdb.py", "#label:Activate VDB\n")
+    grid = ScriptGrid(scripts.scanScripts(library / "all"), context="Sop")
+    grid.adjustSize()
+    vdb, (merge_abs, merge_rel) = grid.columns[0][0][1][0], grid.columns[0][1][1]
+    flipbook, save, third = (block[1][0] for block in grid.columns[1])
+
+    assert third.y() - save.geometry().bottom() - 1 == ScriptGrid.ROW_GAP  # plain buttons: small gap
+    assert merge_rel.y() - merge_abs.geometry().bottom() - 1 == ScriptGrid.ROW_GAP  # inside a group too
+    frame = grid.groupFrame([merge_abs, merge_rel])
+    # space between the frame and the button above it, and between the frame and its buttons
+    assert frame.top() - (vdb.geometry().bottom() + 1) >= ScriptGrid.FRAME_GAP
+    assert merge_abs.x() - frame.left() == ScriptGrid.FRAME_PAD
+    assert flipbook.x() - frame.right() >= ScriptGrid.COLUMN_GAP
+
+
+def test_click_between_buttons_closes(houdini, hou, library, monkeypatch):
+    from hotbox import main  # noqa: F401
+    from hotbox.utils import runner
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+
+    ran = MagicMock()
+    monkeypatch.setattr(runner, "runScript", ran)
+    box = _hotbox(monkeypatch, hou, library)
+    grid = box.scripts_buttons
+    save = grid.columns[1][1][1][0]
+    gap = QPoint(save.geometry().center().x(), save.geometry().bottom() + grid.ROW_GAP // 2)
+    assert grid.childAt(gap) is None
+
+    QTest.mouseClick(grid, Qt.LeftButton, pos=gap)
+
+    assert not shiboken6.isValid(box) or not box.isVisible()
+    ran.assert_not_called()
+
+
+def test_icons_from_files_and_houdini(houdini, hou, monkeypatch, qapp):
+    from hotbox.utils import widgets
+    from PySide6.QtGui import QIcon, QPixmap
+
+    pixmap = QPixmap(8, 8)
+    pixmap.fill()
+    houdini_icons = {"SOP_null": QIcon(pixmap)}
+    monkeypatch.setattr(hou.qt, "Icon", lambda name: houdini_icons.get(name, QIcon()))
+
+    assert widgets.resolveIcon("app_dino_dance.svg") is not None
+    assert widgets.resolveIcon("SOP_null") is houdini_icons["SOP_null"]
+    assert widgets.resolveIcon("SOP_nope") is None and widgets.resolveIcon("") is None
+    assert not widgets.Button("x", icon="SOP_null").icon().isNull()
+
+
+def test_shipped_icons_exist_or_are_houdini_names():
+    import re
+
+    from conftest import ROOT
+    from hotbox.utils.widgets import ICONS_DIR
+
+    for mode in scripts.MODES:
+        for script in scripts.scanScripts(ROOT / "lib" / mode):
+            if script.icon:
+                assert (ICONS_DIR / script.icon).is_file() or re.fullmatch(r"[A-Z]+_\w+", script.icon), script.relpath
+
+
+def test_script_manager_preview_follows_edits(houdini, library):
+    from hotbox.utils.manager import ScriptManager
+
+    manager = ScriptManager(lib_folder=library)
+    manager.name_lineedit.setText("Renamed")
+    manager.hotkey_lineedit.setText("k")
+    assert manager.preview.label == "Renamed (k)"
+    assert manager.preview.baseColor == QColor("#222222")
     manager.close()

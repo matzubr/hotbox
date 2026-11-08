@@ -2,6 +2,7 @@
 #group:Attrib
 #textcolor:#ffe910
 #hotkey:v
+#icon:SOP_attribvop
 
 from hotbox.common import nodes
 

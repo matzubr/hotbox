@@ -1,6 +1,7 @@
 #label:Render Node
 #textcolor:#ff8b48
 #hotkey:1
+#icon:OBJ_geo
 
 import hou
 

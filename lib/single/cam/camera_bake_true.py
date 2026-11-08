@@ -3,6 +3,7 @@
 #textcolor:#ffffff
 #buttoncolor:#16182b
 #hotkey:2
+#icon:OBJ_camera
 
 import hou
 import toolutils

@@ -2,6 +2,7 @@
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:w
+#icon:OBJ_camera
 
 import os
 import sys

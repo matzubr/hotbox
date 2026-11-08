@@ -1,5 +1,6 @@
 #label:Last Alembic Track
 #textcolor:#a0ceff
+#icon:SOP_alembic
 
 import re
 from pathlib import Path

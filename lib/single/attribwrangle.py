@@ -2,6 +2,7 @@
 #group:Attrib
 #textcolor:#ffa700
 #hotkey:w
+#icon:SOP_attribwrangle
 
 from hotbox.common import nodes
 

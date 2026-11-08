@@ -24,7 +24,7 @@ label (not by file names). A group is a framed block with a caption; it is never
 one button is a plain button.
 
 Bottom row: open the HotBox folder · current context (click to close) · Script Manager.
-`Esc` or `` ` `` closes the hotbox. Clicking a button or pressing its hotkey closes the hotbox and runs the script.
+`Esc` or `` ` `` closes the hotbox, so does a click anywhere that is not a button (outside or between buttons). Clicking a button or pressing its hotkey closes the hotbox and runs the script.
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
 Everything a script does is one undo step.
 
@@ -63,11 +63,13 @@ It takes the label, colors, icon and group of the target (its own header overrid
 inherited, choose it per context. A broken reference (file renamed, loop) shows a red button with the reason
 in the tooltip; the tests check every `#ref` in `lib/`.
 
-Or edit them in the **Script Manager** (bottom right button): it writes the header back into the script and warns
+Or edit them in the **Script Manager** (bottom right button, the DinoWrite look, with a live animated preview of
+the button): it writes the header back into the script and warns
 about hotkeys already used by scripts shown together with it and about missing icons. For a `#ref` it edits only
 the reference's own header (inherited values are shown greyed out).
 
-All keys are optional (the label defaults to the file name, icons are looked up in `icons/`).
+All keys are optional (the label defaults to the file name). `#icon` is a file in `icons/` (`save.svg`) or a
+Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `SOP_null`, `OBJ_camera`, `LOP_fetch`...).
 The script runs as `__main__`, `sys.exit()` just stops it, errors are printed to the console and shown in the status bar.
 
 ### Shared helpers: `common/`
