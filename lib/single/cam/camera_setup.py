@@ -1,4 +1,5 @@
 #label:Camera Setup
+#package:blackpoint
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:3

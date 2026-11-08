@@ -62,8 +62,10 @@ def buttonFont(size: float = FONT_SIZE) -> QFont:
 
 
 def fitText(text: str, width: int, max_lines: int = 2, size: float = FONT_SIZE) -> tuple[list[str], QFont]:
-    """Word wrap measured in pixels; when it takes more than max_lines the font gets smaller"""
-    for font_size in (size, size - 2, size - 3):
+    """Word wrap measured in pixels. When the text takes more than max_lines or a word is wider than the
+    button (long node type names: 'karmarendersettings') the font gets smaller; if it still doesn't fit,
+    the lines are cut with '…' (the button tooltip has the full text)."""
+    for font_size in (size, size - 2, size - 3, size - 4):
         font = buttonFont(font_size)
         metrics = QFontMetrics(font)
         lines: list[str] = []
@@ -72,9 +74,15 @@ def fitText(text: str, width: int, max_lines: int = 2, size: float = FONT_SIZE) 
                 lines[-1] += f" {word}"
             else:
                 lines.append(word)
-        if len(lines) <= max_lines:
-            break
-    return lines or [text], font
+        if len(lines) <= max_lines and all(metrics.horizontalAdvance(line) <= width for line in lines):
+            return lines or [text], font
+    if len(lines) > max_lines:
+        lines = lines[: max_lines - 1] + [" ".join(lines[max_lines - 1:])]
+    return [metrics.elidedText(line, Qt.ElideRight, width) for line in lines] or [text], font
+
+
+def isElided(lines: list[str]) -> bool:
+    return any(line.endswith("…") for line in lines)
 
 
 def keyCode(hotkey: str | None) -> int | None:
@@ -222,6 +230,8 @@ class Button(QPushButton):
         self.setText(text)
         icon_width = self.ICON_SIZE + 6 if not self.icon().isNull() else 0
         self.lines, self.labelFont = fitText(text, self.buttonWidth - 24 - icon_width, size=self.fontSize)
+        if isElided(self.lines) and not self.toolTip():
+            self.setToolTip(text)
         self.update()
 
     def updateColors(self, buttonColor="#222222", textColor="#e8e8e8"):

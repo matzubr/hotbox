@@ -242,29 +242,56 @@ def duplicateHotkeys(scripts: list[Script]) -> dict[str, list[str]]:
     return {key: paths for key, paths in used.items() if len(paths) > 1}
 
 
-def writeHeader(path: Path, settings: dict) -> None:
-    """Replace the '#key:value' settings at the top of a script, keep other comments and the code.
-
-    Empty values are removed from the header.
-    """
-    path = Path(path)
+def _readText(path: Path) -> str:
     with open(path, encoding="utf-8", newline="") as f:  # keep \r\n of Windows files
-        text = f.read()
-    newline = "\r\n" if "\r\n" in text else "\n"
-    lines = text.splitlines()
+        return f.read()
 
-    kept_comments = []
+
+def _splitHeader(lines: list[str]) -> int:
+    """Index of the first line after the leading comment block"""
     index = 0
     while index < len(lines) and lines[index].strip().startswith("#"):
-        match = _HEADER_LINE.match(lines[index].strip())
-        if not (match and match.group(1).lower() in SETTINGS):
-            kept_comments.append(lines[index])
         index += 1
+    return index
+
+
+def readBody(path: Path) -> str:
+    """The code after the header comments ('\n' newlines)"""
+    lines = _readText(path).splitlines()
+    return "\n".join(lines[_splitHeader(lines):])
+
+
+def writeHeader(path: Path, settings: dict, body: str | None = None) -> None:
+    """Replace the '#key:value' settings at the top of a script, keep other comments and the code
+    (or replace the code with body). Empty values are removed from the header.
+    """
+    path = Path(path)
+    text = _readText(path)
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    end = _splitHeader(lines)
+
+    kept_comments = []
+    for line in lines[:end]:
+        match = _HEADER_LINE.match(line.strip())
+        if not (match and match.group(1).lower() in SETTINGS):
+            kept_comments.append(line)
 
     header = [f"#{key}:{str(settings[key]).strip()}" for key in SETTINGS if str(settings.get(key) or "").strip()]
-    result = kept_comments + header + lines[index:]
+    code = lines[end:] if body is None else body.splitlines()
+    ends_with_newline = text.endswith(("\n", "\r")) if body is None else True
     with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(newline.join(result) + (newline if text.endswith(("\n", "\r")) else ""))
+        f.write(newline.join(kept_comments + header + code) + (newline if ends_with_newline else ""))
+
+
+def writeBody(path: Path, body: str) -> None:
+    """Replace the code of a script, keep its header as it is"""
+    writeHeader(path, readHeader(path), body=body)
+
+
+def scriptRefs(lib_root: Path) -> list[str]:
+    """Every script as a #ref value ('single/create_null.py'), scripts that are refs themselves excluded"""
+    return [f"{mode}/{s.relpath}" for mode in MODES for s in scanScripts(Path(lib_root) / mode) if not s.ref]
 
 
 def visibleTogether(a: Script, b: Script) -> bool:

@@ -71,7 +71,10 @@ in the tooltip; the tests check every `#ref` in `lib/`.
 Or edit them in the **Script Manager** (bottom right button, the DinoWrite look, with a live animated preview of
 the button): it writes the header back into the script and warns
 about hotkeys already used by scripts shown together with it and about missing icons. For a `#ref` it edits only
-the reference's own header (inherited values are shown greyed out).
+the reference's own header (inherited values are shown greyed out); the **Ref** field sets or changes the target.
+Ref and Package complete existing values inline (Tab accepts), the arrow next to them lists them.
+**Code ›** slides out a code editor (Python highlighting): the script's code, or the target's code for a `#ref`;
+Save writes the header and the code.
 
 All keys are optional (the label defaults to the file name). `#icon` is a file in `icons/` (`save.svg`) or a
 Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `SOP_null`, `OBJ_camera`, `LOP_fetch`...).
@@ -100,7 +103,7 @@ packages on for everyone in `houdini.env`; the user's own switch still wins:
 HOTBOX_PACKAGES = "blackpoint"
 ```
 
-Shipped packages: `blackpoint` (Camera Import/Export, Last Alembic Track), `trehmer` (Save HIP).
+Shipped packages: `blackpoint` (Camera Import/Export/Setup, Last Alembic Track, Convert to $FILM), `trehmer` (Save HIP).
 
 ### Shared helpers: `common/`
 

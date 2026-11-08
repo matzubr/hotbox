@@ -148,3 +148,27 @@ def test_group_blocks_sorted_by_name():
     assert [(name, [s.label for s in members]) for name, members in blocks] == [
         ("", ["Bake"]), ("Merge", ["Alpha", "Zeta"]), ("", ["Null"]),
     ]
+
+
+def test_read_and_write_body_keep_the_header(tmp_path):
+    path = write_script(tmp_path, "a.py", "#!/usr/bin/env hython\n#label:A\n#hotkey:a\n", "\nimport hou\nprint(1)\n")
+    assert scripts.readBody(path) == "\nimport hou\nprint(1)"
+
+    scripts.writeBody(path, "\nimport hou\nprint(2)")
+    assert path.read_text(encoding="utf-8") == "#!/usr/bin/env hython\n#label:A\n#hotkey:a\n\nimport hou\nprint(2)\n"
+
+    scripts.writeHeader(path, {"label": "B"}, body="print(3)")
+    assert path.read_text(encoding="utf-8") == "#!/usr/bin/env hython\n#label:B\nprint(3)\n"
+
+
+def test_script_refs_lists_real_scripts_only(tmp_path):
+    write_script(tmp_path, "single/cam/bake.py", "#label:Bake\n")
+    write_script(tmp_path, "multiple/bake.py", "#ref:single/cam/bake.py\n", body="")
+    write_script(tmp_path, "all/flip.py")
+    assert scripts.scriptRefs(tmp_path) == ["all/flip.py", "single/cam/bake.py"]
+
+
+def test_shipped_blackpoint_package():
+    packages = scripts.allPackages(ROOT / "lib")["blackpoint"]
+    for path in ("single/cam/camera_setup.py", "single/convert_path_to_film.py", "multiple/convert_path_to_film.py"):
+        assert path in packages

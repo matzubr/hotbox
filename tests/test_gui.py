@@ -379,3 +379,132 @@ def test_script_manager_preview_follows_edits(houdini, library):
     assert manager.preview.label == "Renamed (k)"
     assert manager.preview.baseColor == QColor("#222222")
     manager.close()
+
+
+def _select(manager, folder, name):
+    folders = [manager.folders_list.item(i).text() for i in range(manager.folders_list.count())]
+    manager.folders_list.setCurrentRow(folders.index(folder))
+    files = [manager.files_list.item(i).text() for i in range(manager.files_list.count())]
+    manager.files_list.setCurrentRow(files.index(name))
+
+
+def test_script_manager_ref_field(houdini, library):
+    from hotbox.utils.manager import ScriptManager
+
+    stub = write_script(library, "multiple/merge.py", "#ref:all/Sop/merge_abs.py\n", body="")
+    manager = ScriptManager(lib_folder=library)
+    manager.mode_combobox.setCurrentText("multiple")
+    assert manager.ref_lineedit.text() == "all/Sop/merge_abs.py"
+    assert "multiple/merge.py" not in manager.ref_lineedit.choices  # not itself
+    assert "all/flipbook.py" in manager.ref_lineedit.choices
+
+    manager.ref_lineedit.setText("all/flipbook.py")  # another target: placeholders and preview follow
+    assert manager.name_lineedit.placeholderText() == "Flipbook"
+    assert manager.preview.label == "Flipbook"
+    manager.ref_lineedit.setText("all/missing.py")
+    assert "not found" in manager.warning_label.text()
+
+    manager.ref_lineedit.setText("all/flipbook.py")
+    manager.save()
+    assert stub.read_text(encoding="utf-8") == "#ref:all/flipbook.py\n"
+    manager.close()
+
+
+def test_preview_does_not_blink_while_typing(houdini, library):
+    from hotbox.utils.manager import ScriptManager
+
+    manager = ScriptManager(lib_folder=library)
+    for text in ("R", "Re", "Ren"):
+        manager.name_lineedit.setText(text)
+        assert manager.preview.ripple == 1.0 and manager.preview.hover == 0.0
+    assert manager.preview.label == "Ren (f)"  # the flipbook fixture has hotkey f
+    manager.close()
+
+
+def test_code_panel_slides_out_and_saves_code(houdini, library):
+    from hotbox.utils import manager as manager_module
+    from hotbox.utils.manager import ScriptManager
+    from PySide6.QtTest import QTest
+
+    path = library / "all" / "flipbook.py"
+    path.write_text("#label:Flipbook\n#hotkey:f\n\nimport hou\nprint('flip')\n", encoding="utf-8")
+    manager = ScriptManager(lib_folder=library)
+    _select(manager, "(root)", "flipbook.py")
+    width = manager.width()
+    assert not manager.code_panel.isVisible()
+
+    manager.toggleCode()
+    QTest.qWait(manager_module.CODE_SLIDE_MS + 100)
+    assert manager.code_panel.isVisible() and manager.code_panel.width() == manager_module.CODE_WIDTH
+    assert manager.width() > width
+    assert manager.code_edit.toPlainText() == "\nimport hou\nprint('flip')"
+    assert "all/flipbook.py" in manager.code_title.text()
+
+    manager.code_edit.setPlainText("\nimport hou\nprint('flop')")
+    assert "●" in manager.code_title.text()
+    manager.hotkey_lineedit.setText("g")
+    manager.save()
+    assert path.read_text(encoding="utf-8") == "#label:Flipbook\n#hotkey:g\n\nimport hou\nprint('flop')\n"
+
+    manager.toggleCode()
+    QTest.qWait(manager_module.CODE_SLIDE_MS + 100)
+    assert not manager.code_panel.isVisible() and manager.width() == width
+    manager.close()
+
+
+def test_code_of_a_ref_is_the_target_code(houdini, library):
+    from hotbox.utils.manager import ScriptManager
+
+    target = library / "all" / "Sop" / "merge_abs.py"
+    stub = write_script(library, "multiple/merge.py", "#ref:all/Sop/merge_abs.py\n#hotkey:m\n", body="")
+    manager = ScriptManager(lib_folder=library)
+    manager.mode_combobox.setCurrentText("multiple")
+    assert manager.code_edit.toPlainText() == "pass"
+    assert "all/Sop/merge_abs.py  (ref target)" in manager.code_title.text()
+
+    manager.code_edit.setPlainText("print('merge')")
+    manager.save()
+    assert stub.read_text(encoding="utf-8") == "#ref:all/Sop/merge_abs.py\n#hotkey:m\n"
+    assert target.read_text(encoding="utf-8").endswith("#hotkey:2\nprint('merge')\n")
+    manager.close()
+
+
+def test_unsaved_code_is_asked_about_when_switching(houdini, library, monkeypatch):
+    from hotbox.utils import manager as manager_module
+    from hotbox.utils.manager import ScriptManager
+
+    asked = []
+    monkeypatch.setattr(manager_module.QMessageBox, "question",
+                        lambda *args, **kwargs: asked.append(args[2]) or manager_module.QMessageBox.Save)
+    manager = ScriptManager(lib_folder=library)
+    _select(manager, "(root)", "flipbook.py")
+    manager.code_edit.setPlainText("print('changed')")
+
+    _select(manager, "(root)", "save.py")
+
+    assert asked and "all/flipbook.py" in asked[0]
+    assert (library / "all" / "flipbook.py").read_text(encoding="utf-8").endswith("print('changed')\n")
+    assert manager.code_edit.toPlainText() == "pass"
+    manager.close()
+
+
+@pytest.mark.parametrize("label", ["karmarendersettings", "labs::karma_render_settings_extended::2.0",
+                                   "Camera Bake Keyframes Extra Long Name (2)"])
+def test_long_labels_fit_the_button(houdini, label):
+    from hotbox.utils.widgets import Button
+    from PySide6.QtGui import QFontMetrics
+
+    for icon in (None, "app_dino_dance.svg"):
+        button = Button(label, icon=icon)
+        icon_width = Button.ICON_SIZE + 6 if icon else 0
+        metrics = QFontMetrics(button.labelFont)
+        assert len(button.lines) <= 2
+        assert all(metrics.horizontalAdvance(line) <= Button.WIDTH - 24 - icon_width for line in button.lines)
+        assert metrics.height() * len(button.lines) <= Button.HEIGHT
+
+
+def test_short_label_keeps_the_full_font(houdini):
+    from hotbox.utils.widgets import FONT_SIZE, Button
+
+    button = Button("Sop")
+    assert button.lines == ["Sop"] and button.labelFont.pointSizeF() == FONT_SIZE
