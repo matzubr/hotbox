@@ -37,10 +37,19 @@ def createAttribNode(node_type: str, color: tuple[float, float, float]):
     return node
 
 
-def pasteMergeNodes(category: str, node_type: str, path_parm: str, relative: bool, extra_parms=None) -> list:
+def styleLikeSource(node, source, shape: str | None = None) -> None:
+    """Node shape (Network Editor shapes: 'chevron_up', 'circle'...) and the color of the source node"""
+    if shape:
+        node.setUserData("nodeshape", shape)
+    node.setColor(source.color())
+
+
+def pasteMergeNodes(category: str, node_type: str, path_parm: str, relative: bool, extra_parms=None,
+                    shape: str | None = None, copy_color: bool = False) -> list:
     """Object Merge / Fetch for each node in the clipboard, at the cursor of the Network Editor.
 
-    category: network type the tool works in ("Sop", "Lop"); extra_parms: {name: value} set on each node.
+    category: network type the tool works in ("Sop", "Lop"); extra_parms: {name: value} set on each node;
+    shape / copy_color: node shape of the created nodes, color taken from the copied node.
     """
     pane = panes.networkPane()
     if pane is None:
@@ -62,5 +71,9 @@ def pasteMergeNodes(category: str, node_type: str, path_parm: str, relative: boo
         node.parm(path_parm).set(node.relativePathTo(source) if relative else source.path())
         for name, value in (extra_parms or {}).items():
             node.parm(name).set(value)
+        if copy_color:
+            styleLikeSource(node, source, shape)
+        elif shape:
+            node.setUserData("nodeshape", shape)
         created.append(node)
     return created

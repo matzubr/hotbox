@@ -70,6 +70,32 @@ def test_paste_merge_nodes_from_clipboard(hou, monkeypatch):
     assert len(created) == 1
     network.createNode.assert_called_once_with("object_merge", "MERGE_sim")
     created[0].parm("objpath1").set.assert_any_call(source.path())
+    created[0].setUserData.assert_not_called()  # plain paste: default look
+
+
+@pytest.mark.parametrize("script", ["object_merge_relative.py", "object_merge_absolute.py"])
+def test_object_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, script):
+    from conftest import ROOT
+    from hotbox.common import panes
+    from hotbox.utils import runner
+
+    network = MagicMock()
+    network.childTypeCategory().name.return_value = "Sop"
+    pane = MagicMock()
+    pane.pwd.return_value = network
+    monkeypatch.setattr(panes, "networkPane", lambda: pane)
+    sources = {"/obj/a/sim": MagicMock(), "/obj/b/cache": MagicMock()}
+    monkeypatch.setattr(hou, "node", lambda path: sources.get(path), raising=False)
+    hou.ui.getTextFromClipboard.return_value = "/obj/a/sim /obj/b/cache"
+    created = []
+    network.createNode.side_effect = lambda *args: created.append(MagicMock()) or created[-1]
+
+    assert runner.runScript(ROOT / "lib" / "all" / "Sop" / script)
+
+    assert len(created) == 2
+    for node, source in zip(created, sources.values()):
+        node.setUserData.assert_called_once_with("nodeshape", "chevron_up")
+        node.setColor.assert_called_once_with(source.color())
 
 
 def test_paste_merge_nodes_wrong_network(hou, monkeypatch):

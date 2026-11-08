@@ -7,4 +7,5 @@
 
 from hotbox.common import nodes
 
-nodes.pasteMergeNodes("Sop", "object_merge", "objpath1", relative=False, extra_parms={"xformtype": 1})
+nodes.pasteMergeNodes("Sop", "object_merge", "objpath1", relative=False, extra_parms={"xformtype": 1},
+                      shape="chevron_up", copy_color=True)
