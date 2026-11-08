@@ -76,6 +76,30 @@ def test_hotkey_runs_script_and_closes(houdini, hou, library, monkeypatch, qapp)
     assert not box.isVisible()
 
 
+def test_hotkey_in_russian_layout(houdini, hou, library, monkeypatch):
+    from hotbox import main  # noqa: F401
+    from hotbox.utils import runner
+    from hotbox.utils.qt import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    ran = MagicMock()
+    monkeypatch.setattr(runner, "runScript", ran)
+    box = _hotbox(monkeypatch, hou, library)
+
+    # 'а' is on the F key in the Russian layout; Qt reports the Cyrillic key code
+    box.keyPressEvent(QKeyEvent(QEvent.KeyPress, 0x0410, Qt.NoModifier, "а"))
+
+    assert ran.call_args.args[0] == library / "all" / "flipbook.py"
+
+
+def test_bundled_font_is_used(houdini):
+    from hotbox.utils import widgets
+    from hotbox.utils.qt import QFontDatabase
+
+    widgets.Button("x")
+    assert widgets.FONT_FAMILY in QFontDatabase.families()
+
+
 def test_escape_closes(houdini, hou, library, monkeypatch):
     from hotbox.utils.qt import Qt
     from PySide6.QtTest import QTest
@@ -146,3 +170,24 @@ def test_show_reloads_changed_code(houdini, hou, monkeypatch):
     assert not hotbox._filesChangedSinceLoad()
     monkeypatch.setattr(hotbox, "_loaded_at", 0)
     assert hotbox._filesChangedSinceLoad()
+
+
+def test_script_manager_saves_header(houdini, library):
+    from hotbox.utils.widgets import ScriptManager
+
+    manager = ScriptManager(lib_folder=library)
+    manager.folders_list.setCurrentRow(2)  # Sop: merge_abs.py ("2"), merge_rel.py ("1")
+    manager.hotkey_lineedit.setText("1")
+    assert "Sop/merge_rel.py" in manager.warning_label.text()
+
+    manager.hotkey_lineedit.setText("3")
+    manager.name_lineedit.setText("Merge Abs")
+    manager.icon_lineedit.setText("missing.svg")
+    assert "No icon" in manager.warning_label.text()
+    manager.icon_lineedit.setText("")
+    manager.save()
+
+    path = library / "all" / "Sop" / "merge_abs.py"
+    assert path.read_text(encoding="utf-8") == "#label:Merge Abs\n#hotkey:3\npass\n"  # default colors not written
+    assert manager.currentScript().relpath == "Sop/merge_abs.py" and manager.hotkey_lineedit.text() == "3"
+    manager.close()

@@ -69,11 +69,11 @@ class HotBox(QWidget):
         runner.runScript(script.path, label=script.label)
 
     def keyPressEvent(self, event):
-        key = int(event.key())
-        if key in widgets.CLOSE_KEYS:
+        codes = widgets.eventKeyCodes(event)
+        if any(code in widgets.CLOSE_KEYS for code in codes):
             self.close()
             return
-        button = self.keybindings.get(key)
+        button = next((self.keybindings[code] for code in codes if code in self.keybindings), None)
         if button is not None and not event.isAutoRepeat():
             button.click()
             return

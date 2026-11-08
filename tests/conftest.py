@@ -56,7 +56,10 @@ class ColorSwatch:
 
         class _Swatch(QtWidgets.QPushButton):
             def setColor(self, color):
-                self.color = color
+                self._color = color
+
+            def color(self):
+                return self._color
 
         return _Swatch()
 

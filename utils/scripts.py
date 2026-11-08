@@ -113,3 +113,54 @@ def duplicateHotkeys(scripts: list[Script]) -> dict[str, list[str]]:
         if script.hotkey:
             used.setdefault(script.hotkey.lower(), []).append(script.relpath)
     return {key: paths for key, paths in used.items() if len(paths) > 1}
+
+
+def writeHeader(path: Path, settings: dict) -> None:
+    """Replace the '#key:value' settings at the top of a script, keep other comments and the code.
+
+    Empty values are removed from the header.
+    """
+    path = Path(path)
+    with open(path, encoding="utf-8", newline="") as f:  # keep \r\n of Windows files
+        text = f.read()
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+
+    kept_comments = []
+    index = 0
+    while index < len(lines) and lines[index].strip().startswith("#"):
+        match = _HEADER_LINE.match(lines[index].strip())
+        if not (match and match.group(1).lower() in SETTINGS):
+            kept_comments.append(lines[index])
+        index += 1
+
+    header = [f"#{key}:{str(settings[key]).strip()}" for key in SETTINGS if str(settings.get(key) or "").strip()]
+    result = kept_comments + header + lines[index:]
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(newline.join(result) + (newline if text.endswith(("\n", "\r")) else ""))
+
+
+def visibleTogether(a: Script, b: Script) -> bool:
+    """Scripts of one mode folder that can be on screen at the same time (root scripts show with every context)"""
+    return a.context == b.context or a.context == "" or b.context == ""
+
+
+def hotkeyConflicts(scripts: list[Script], script: Script, hotkey: str) -> list[str]:
+    """Other scripts shown together with this one that already use the hotkey"""
+    hotkey = (hotkey or "").strip().lower()
+    if not hotkey:
+        return []
+    return [
+        other.relpath
+        for other in scripts
+        if other.relpath != script.relpath and visibleTogether(script, other) and (other.hotkey or "").lower() == hotkey
+    ]
+
+
+# Russian ЙЦУКЕН -> the Latin letter on the same physical key, so hotkeys work in either keyboard layout
+LAYOUT_TO_LATIN = dict(zip("йцукенгшщзхъфывапролджэячсмитьбюё", "qwertyuiop[]asdfghjkl;'zxcvbnm,.`", strict=True))
+
+
+def latinKey(text: str) -> str | None:
+    """Latin character of the same key for a character typed in another layout, None when unknown"""
+    return LAYOUT_TO_LATIN.get(text.lower()) if text else None

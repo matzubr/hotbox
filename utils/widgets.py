@@ -9,7 +9,9 @@ from . import scripts as script_lib
 from .qt import (
     QColor,
     QComboBox,
+    QDesktopServices,
     QFont,
+    QFontDatabase,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -22,14 +24,29 @@ from .qt import (
     QPushButton,
     QSize,
     Qt,
+    QUrl,
     QVBoxLayout,
     QWidget,
 )
 
-ICONS_DIR = Path(__file__).resolve().parents[1] / "icons"
+PACKAGE_DIR = Path(__file__).resolve().parents[1]
+ICONS_DIR = PACKAGE_DIR / "icons"
+FONT_FILE = PACKAGE_DIR / "fonts" / "JosefinSans.ttf"
 FONT_FAMILY = "Josefin Sans"
 FONT_SIZE = 16
 CLOSE_KEYS = (int(Qt.Key_Escape), int(Qt.Key_QuoteLeft))  # Esc and `
+
+_font_loaded = False
+
+
+def loadFont() -> None:
+    """Register the bundled Josefin Sans (SIL OFL, fonts/OFL.txt) once per Houdini session"""
+    global _font_loaded
+    if _font_loaded:
+        return
+    _font_loaded = True
+    if QFontDatabase.addApplicationFont(FONT_FILE.as_posix()) < 0:
+        print(f"HotBox: can't load {FONT_FILE.as_posix()}, using the system font")
 
 
 def keyCode(hotkey: str | None) -> int | None:
@@ -48,6 +65,16 @@ def keyCode(hotkey: str | None) -> int | None:
     return int(combination) & ~int(Qt.KeyboardModifierMask)
 
 
+def eventKeyCodes(event) -> list[int]:
+    """Key codes to match a key press against: the key itself and, for another keyboard layout
+    (Russian), the Latin key on the same physical key"""
+    codes = [int(event.key())]
+    latin = keyCode(script_lib.latinKey(event.text()))
+    if latin is not None and latin not in codes:
+        codes.append(latin)
+    return codes
+
+
 class Button(QPushButton):
     """Flat rounded button with a wrapped label"""
 
@@ -61,6 +88,7 @@ class Button(QPushButton):
         parent=None,
     ):
         super().__init__(parent)
+        loadFont()
         self.buttonWidth = buttonsize
 
         if isinstance(icon, (QIcon, QPixmap)):
@@ -160,7 +188,7 @@ class HSeparator(QFrame):
 
 
 class ScriptManager(QWidget):
-    """Browse library scripts and their header settings (read only for now)"""
+    """Browse library scripts and edit their header settings (written back into the script files)"""
 
     ROOT_ITEM = "(root)"
 
@@ -195,9 +223,16 @@ class ScriptManager(QWidget):
         self.button_color_swatch = hou.qt.ColorSwatchButton()
         self.text_color_swatch = hou.qt.ColorSwatchButton()
         self.icon_lineedit = QLineEdit()
+        self.icon_lineedit.setPlaceholderText("file name in icons/")
         self.hotkey_lineedit = QLineEdit()
+        self.hotkey_lineedit.setPlaceholderText("g, 1, F5...")
         self.file_lineedit = QLineEdit()
         self.file_lineedit.setReadOnly(True)
+        self.warning_label = QLabel()
+        self.warning_label.setStyleSheet("color:#ffb04a")
+        self.warning_label.setWordWrap(True)
+        self.save_button = QPushButton("Save")
+        self.open_button = QPushButton("Open file")
 
         tc_layout = QVBoxLayout()
         tc_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
@@ -206,6 +241,8 @@ class ScriptManager(QWidget):
         tc_layout.addLayout(HLayout([QLabel("Text Color"), self.text_color_swatch]))
         tc_layout.addLayout(HLayout([QLabel("Icon"), self.icon_lineedit]))
         tc_layout.addLayout(HLayout([QLabel("Hotkey"), self.hotkey_lineedit]))
+        tc_layout.addWidget(self.warning_label)
+        tc_layout.addLayout(HLayout([self.save_button, self.open_button]))
         tc_layout.addWidget(HSeparator())
         tc_layout.addLayout(HLayout([QLabel("File"), self.file_lineedit]))
 
@@ -217,6 +254,10 @@ class ScriptManager(QWidget):
         self.mode_combobox.currentIndexChanged.connect(self.updateScripts)
         self.folders_list.currentRowChanged.connect(self.updateFilesList)
         self.files_list.currentRowChanged.connect(self.updateInfo)
+        self.hotkey_lineedit.textChanged.connect(self.updateWarnings)
+        self.icon_lineedit.textChanged.connect(self.updateWarnings)
+        self.save_button.clicked.connect(self.save)
+        self.open_button.clicked.connect(self.openFile)
         self.updateScripts()
         self.show()
 
@@ -258,16 +299,71 @@ class ScriptManager(QWidget):
 
     def updateInfo(self):
         script = self.currentScript()
-        self.name_lineedit.setText(script.label if script else "")
+        self.name_lineedit.setText(script.settings.get("label", "") if script else "")
+        self.name_lineedit.setPlaceholderText(script.label if script else "")
         self.icon_lineedit.setText((script.icon or "") if script else "")
         self.hotkey_lineedit.setText((script.hotkey or "") if script else "")
         self.file_lineedit.setText(script.path.as_posix() if script else "")
         if script:
             self.button_color_swatch.setColor(QColor(script.buttoncolor))
             self.text_color_swatch.setColor(QColor(script.textcolor))
+        for widget in (self.save_button, self.open_button):
+            widget.setEnabled(script is not None)
+        self.updateWarnings()
+
+    def warnings(self) -> list[str]:
+        script = self.currentScript()
+        if script is None:
+            return []
+        messages = []
+        hotkey = self.hotkey_lineedit.text().strip()
+        if hotkey and keyCode(hotkey) is None:
+            messages.append(f"'{hotkey}' is not a key")
+        conflicts = script_lib.hotkeyConflicts(self.scripts, script, hotkey)
+        if conflicts:
+            messages.append(f"Hotkey '{hotkey}' is also used by: {', '.join(conflicts)}")
+        icon = self.icon_lineedit.text().strip()
+        if icon and not (ICONS_DIR / icon).exists():
+            messages.append(f"No icon icons/{icon}")
+        return messages
+
+    def updateWarnings(self):
+        self.warning_label.setText("\n".join(self.warnings()))
+
+    def editedSettings(self) -> dict:
+        script = self.currentScript()
+        settings = dict(script.settings) if script else {}
+        settings.update(
+            label=self.name_lineedit.text().strip(),
+            buttoncolor=self.button_color_swatch.color().name(),
+            textcolor=self.text_color_swatch.color().name(),
+            icon=self.icon_lineedit.text().strip(),
+            hotkey=self.hotkey_lineedit.text().strip(),
+        )
+        # Don't write defaults into scripts that didn't set them
+        for key, default in script_lib.DEFAULTS.items():
+            if key not in (script.settings if script else {}) and settings[key].lower() == default:
+                settings.pop(key)
+        return settings
+
+    def save(self):
+        script = self.currentScript()
+        if script is None:
+            return
+        script_lib.writeHeader(script.path, self.editedSettings())
+        folder_row, file_row = self.folders_list.currentRow(), self.files_list.currentRow()
+        self.scripts = script_lib.scanScripts(self.lib / self.mode_combobox.currentText())
+        self.folders_list.setCurrentRow(folder_row)
+        self.files_list.setCurrentRow(file_row)
+        self.updateInfo()
+
+    def openFile(self):
+        script = self.currentScript()
+        if script is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(script.path.as_posix()))
 
     def keyPressEvent(self, event):
-        if int(event.key()) in CLOSE_KEYS:
+        if int(event.key()) == int(Qt.Key_Escape):
             self.close()
             return
         super().keyPressEvent(event)

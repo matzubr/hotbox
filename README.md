@@ -18,6 +18,7 @@ Deeper folders (`lib/all/Lop/Instances/`) are not shown.
 
 Bottom row: open the HotBox folder · current context (click to close) · Script Manager.
 `Esc` or `` ` `` closes the hotbox. Clicking a button or pressing its hotkey closes the hotbox and runs the script.
+Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
 Everything a script does is one undo step.
 
 ## Adding a script
@@ -34,6 +35,9 @@ Drop a `.py` file into the right folder. Its button is described by the first co
 import hou
 ...
 ```
+
+Or edit them in the **Script Manager** (bottom right button): it writes the header back into the script and warns
+about hotkeys already used by scripts shown together with it and about missing icons.
 
 All keys are optional (the label defaults to the file name, icons are looked up in `icons/`).
 The script runs as `__main__`, `sys.exit()` just stops it, errors are printed to the console and shown in the status bar.
@@ -85,3 +89,8 @@ uv sync
 uv run pytest
 uv run ruff check __init__.py main.py utils tests
 ```
+
+## Credits
+
+Buttons use [Josefin Sans](https://github.com/ThomasJockin/JosefinSansFont-master) (`fonts/`), SIL Open Font License 1.1,
+see `fonts/OFL.txt`.
