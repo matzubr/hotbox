@@ -58,6 +58,12 @@ hotbox.show()
 Updated code is reloaded automatically on the next `show()` (no Houdini restart). The old
 `from hotbox import main; main.start()` still works.
 
+Camera Import / Camera Export use the studio `cam_tools` library: set its folder in `houdini.env`:
+
+```
+CAM_TOOLS_PATH = "//<server>/tools/py_libs/camera_exchanger"
+```
+
 The Flipbook button runs [DinoWrite](https://github.com/matzubr/DinoWrite), installed next to `hotbox`.
 
 ## Development

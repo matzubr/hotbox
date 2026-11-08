@@ -3,14 +3,16 @@
 #buttoncolor:#22253b
 #hotkey:w
 
+import os
 import sys
 from importlib import reload
 
 import hou
 
-CAM_TOOLS = "//studio/tools/py_libs/camera_exchanger"
+# Studio camera exchanger folder: set CAM_TOOLS_PATH in houdini.env (not stored in the repo)
+CAM_TOOLS = os.environ.get("CAM_TOOLS_PATH", "")
 
-if CAM_TOOLS not in sys.path:
+if CAM_TOOLS and CAM_TOOLS not in sys.path:
     sys.path.append(CAM_TOOLS)
 try:
     import cam_tools
