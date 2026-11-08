@@ -61,7 +61,9 @@ def main():
     builtins.print = lambda *a, **k: None if a and str(a[0]).startswith("HotBox: no icon") else print_(*a, **k)
 
     from hotbox import main as hotbox_main
-    from hotbox.utils import manager, utility
+    from hotbox.utils import manager, settings, utility
+
+    settings.setPackageEnabled("blackpoint", True)  # the full camera menu in the images
 
     utility.detectContext = lambda: utility.Context("single", "cam", "cam", None)
     box = hotbox_main.HotBox()
@@ -93,8 +95,6 @@ def main():
     record(6, wait=False)
     box.close()
     saveGif(frames, DOCS / "hotbox_animation.gif")
-
-    from hotbox.utils import settings
 
     settings.setPackageEnabled("trehmer", True)  # Save HIP is shown in the manager
     os.chdir(ROOT)  # relative lib path: no personal absolute paths in the File field of a public image
