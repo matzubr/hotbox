@@ -1,133 +1,101 @@
-from PySide2.QtCore import QEvent, QObject
-from PySide2.QtWidgets import *
-from PySide2.QtCore import *
-from PySide2.QtGui import *
+"""HotBox: popup under the mouse with buttons for the scripts in lib/<mode>/.
 
-import platform
-import hou
-import re
-import sys
+Shelf tool / hotkey (see README):
+    import hotbox
+    hotbox.show()
+
+The old entry point `from hotbox import main; main.start()` still works.
+"""
+from __future__ import annotations
 
 from pathlib import Path
-from pprint import pprint as pp
-from webbrowser import open as wbopen
-from .utils import widgets,utility
 
-if sys.version_info.major == 3:
-    from importlib import reload
+import hou
 
-reload(widgets)
-reload(utility)
+from .utils import runner, scripts, utility, widgets
+from .utils.qt import QCursor, QDesktopServices, QGuiApplication, QPoint, Qt, QUrl, QVBoxLayout, QWidget
 
-PLATFORM_SYSTEM = platform.system()
+PACKAGE_DIR = Path(__file__).resolve().parent
+LIB_DIR = PACKAGE_DIR / "lib"
 
 
 def start():
-    HotBox()
-    # widgets.ScriptManager(lib_folder=Path(__file__).parent / "lib")
+    return HotBox()
+
 
 class HotBox(QWidget):
-    def __init__(self) -> None:
+    def __init__(self, lib_dir: Path = LIB_DIR):
         super().__init__(hou.qt.mainWindow())
-        # QDir.addSearchPath("icons",Path(__file__,"../icons").resolve().as_posix())
+        self.lib_dir = Path(lib_dir)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
-        # self.setWindowFlag(Qt.WindowStaysOnTopHint)
-        # self.setWindowFlag(Qt.FramelessWindowHint)
-        # self.setAttribute(Qt.WA_NoSystemBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)
 
-        #enable transparency on Linux
-        # if PLATFORM_SYSTEM not in ['Darwin','Windows']:
-            # self.setAttribute(Qt.WA_PaintOnScreen)
-        
-        self.HouPanes = utility.HouPanes()
+        self.context = utility.detectContext()
         self.initUI()
         self.adjustSize()
-        # self.installEventFilter(self)
-        
+        self.setPositionFromMouse()
+        self.show()
+
+    @property
+    def mode(self) -> str:
+        return self.context.mode
+
     def initUI(self):
-        
-        lib_folder = Path(__file__).parent / "lib"
-
-        #set context
-        nodes = self.HouPanes.getSelectedNodes()
-        nodes_count = len(nodes)
-
-        central_widget_icon = self.HouPanes.network_icon
-        node_network = self.HouPanes.network.pwd().childTypeCategory().name()
-        if nodes_count==0:
-            self.mode = "all"
-            central_widget_name = node_network
-        elif nodes_count>1:
-            self.mode = "multiple"
-            central_widget_name = "Multiple"
-        else:
-            self.mode = "single"
-            central_widget_name = nodes[0].type().nameComponents()[2]
-            central_widget_icon = self.HouPanes.getNodeIcon(nodes[0])
-            node_network = nodes[0].type().nameComponents()[2]
-
-        lib_context_folder = lib_folder / self.mode
-
-        #Procces schema
-        schema_resolver = utility.JsonResolver(lib_context_folder)
-
-        self.scripts_buttons = widgets.MultipleButtonsFromSchema(schema=schema_resolver.schema,context=node_network,parent=self)
-
-        self.keybindings={}
-        for child in self.scripts_buttons.children():
-            if type(child) is widgets.ButtomFromFile:
-                key = QKeySequence(child.hotkey)
-                if key.count()>0:
-                    self.keybindings[key[0]]=child
+        library = scripts.scanScripts(self.lib_dir / self.mode)
+        self.scripts_buttons = widgets.ScriptGrid(library, context=self.context.context, parent=self)
+        for button in self.scripts_buttons.buttons:
+            button.clicked.connect(lambda checked=False, b=button: self.runScript(b.script))
+        self.keybindings = self.scripts_buttons.keybindings()
 
         self.open_hotbox_button = widgets.Button("Open HotBox folder")
-        self.central_button = widgets.Button(central_widget_name,icon=central_widget_icon)
+        self.central_button = widgets.Button(self.context.title, icon=self.context.icon)
         self.script_manager_button = widgets.Button("Script Manager")
 
-        central_layout = widgets.HLayout([self.open_hotbox_button,self.central_button,self.script_manager_button])
+        central_layout = widgets.HLayout([self.open_hotbox_button, self.central_button, self.script_manager_button])
 
         layout = QVBoxLayout()
         layout.addWidget(self.scripts_buttons)
         layout.addLayout(central_layout)
+        self.setLayout(layout)
 
-        self.open_hotbox_button.clicked.connect(self.openhotboxfolder)
+        self.open_hotbox_button.clicked.connect(self.openHotboxFolder)
         self.central_button.clicked.connect(self.close)
         self.script_manager_button.clicked.connect(self.startManager)
 
-        self.setLayout(layout)
+    def runScript(self, script):
+        # Close first: scripts open dialogs, select nodes in the viewport, etc.
+        self.close()
+        runner.runScript(script.path, label=script.label)
 
-        self.show()
-        self.setPositionFromMouse()
-        self.installEventFilter(self)
+    def keyPressEvent(self, event):
+        key = int(event.key())
+        if key in widgets.CLOSE_KEYS:
+            self.close()
+            return
+        button = self.keybindings.get(key)
+        if button is not None and not event.isAutoRepeat():
+            button.click()
+            return
+        super().keyPressEvent(event)
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+    def openHotboxFolder(self):
+        self.close()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(PACKAGE_DIR.as_posix()))
 
-        if event.type() in [QEvent.Type.KeyPress]:
-            if event.key() in self.keybindings.keys():
-                button = self.keybindings[event.key()]
-                # button.execfile()
-                button.animateClick()
-
-        return super().eventFilter(watched, event)
-
-    def openhotboxfolder(self):
-        executed_script = Path(__file__)
-        hotbox_folder = executed_script.parent
-        wbopen(hotbox_folder.as_posix())
-
-    def startManager(self,parent=None):
-        widgets.ScriptManager(lib_folder=Path(__file__).parent / "lib")
+    def startManager(self):
+        self.close()
+        return widgets.ScriptManager(lib_folder=self.lib_dir)
 
     def setPositionFromMouse(self):
+        """Center under the mouse, kept inside the screen"""
         mouse_pos = QCursor.pos()
-        center_pos = mouse_pos - QPoint(self.width()//2,self.height()//2)
-        self.move(center_pos)
+        pos = mouse_pos - QPoint(self.width() // 2, self.height() // 2)
+        screen = QGuiApplication.screenAt(mouse_pos) or QGuiApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            x = min(max(pos.x(), area.left()), max(area.left(), area.right() - self.width()))
+            y = min(max(pos.y(), area.top()), max(area.top(), area.bottom() - self.height()))
+            pos = QPoint(x, y)
+        self.move(pos)
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-
-        if event.key() in [16777216,96]: # 96 - ` , 16777216 - escape
-            self.close()
-
-        return super().keyReleaseEvent(event)
