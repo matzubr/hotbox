@@ -106,6 +106,20 @@ HOTBOX_PACKAGES = "studio-name"
 The studio specific scripts in `lib/` (Camera Import/Export/Setup, Last Alembic Track, Convert to $FILM, Save HIP)
 are in packages: turn them on in the gear menu if you need them.
 
+### Shipped scripts
+
+| Where | Scripts |
+|---|---|
+| everywhere, nothing selected | Flipbook, **Scene**: Missing Files (pick to jump to the nodes), Reload Caches |
+| Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
+| Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
+| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`), Material Library + Assign |
+| any node(s) selected | Create Vop / Wrangle, Create Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
+| several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
+| null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
+| cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |
+| alembic, alembicarchive, filecache, file | Frame Range: scene and playback range from the Alembic animation or the sequence on disk |
+
 ### Shared helpers: `common/`
 
 Small pieces several scripts need, split by topic (whole tools stay scripts in `lib/`):
@@ -113,8 +127,9 @@ Small pieces several scripts need, split by topic (whole tools stay scripts in `
 | Module | |
 |---|---|
 | `common/panes.py` | Network Editor / Scene Viewer under the cursor, status bar warnings |
-| `common/nodes.py` | node paths from the clipboard, Object Merge / Fetch at the cursor, attrib VOP/wrangle under the selection |
-| `common/paths.py` | file parameters of a node, `$JOB`/`$FILM` path conversion |
+| `common/nodes.py` | node paths from the clipboard, Object Merge / Fetch / SOP Import at the cursor, attrib VOP/wrangle under the selection, a free spot for a new node |
+| `common/paths.py` | file parameters of a node and of the scene, `$JOB`/`$FILM` path conversion, missing files, reload of file nodes |
+| `common/frames.py` | frame range of a node: Alembic animation, file sequence on disk, keyframes |
 
 ```python
 from hotbox.common import paths

@@ -32,6 +32,7 @@ _SUBMODULES = (
     "common.panes",
     "common.nodes",
     "common.paths",
+    "common.frames",
     "main",
 )
 

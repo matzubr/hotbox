@@ -124,3 +124,154 @@ def test_render_node_is_not_parented_to_the_source_object(hou, monkeypatch, tmp_
 
     container.parent.return_value.createNode.assert_called_once_with("geo", "RENDER_OUT_sim")
     container.createOutputNode.assert_not_called()
+
+
+def _item(path, x, y, w=1.0, h=0.3):
+    item = MagicMock()
+    item.path.return_value = path
+    item.position.return_value = (x, y)
+    item.size.return_value = (w, h)
+    return item
+
+
+def test_free_position_skips_taken_spots(hou, monkeypatch):
+    monkeypatch.setattr(hou, "Vector2", lambda x, y: (x, y), raising=False)
+    network = MagicMock()
+    network.children.return_value = [_item("/obj/a", 0, -1), _item("/obj/b", 0, -2)]
+    assert nodes.freePosition(network, (0, -1), (1, 0.3)) == (0, -3)
+    assert nodes.freePosition(network, (3, -1), (1, 0.3)) == (3, -1)  # free column
+    assert nodes.freePosition(network, (0, -1), (1, 0.3), ignore=[_item("/obj/a", 0, 0), _item("/obj/b", 0, 0)]) == (0, -1)
+
+
+def test_render_nodes_go_under_the_object_without_covering_others(hou, monkeypatch):
+    from conftest import ROOT
+    from hotbox.utils import runner
+
+    monkeypatch.setattr(hou, "Vector2", lambda x, y: (x, y), raising=False)
+    container = _item("/obj/geo1", 0, 0)
+    network = MagicMock()
+    children = [container, _item("/obj/taken", 0, -1)]  # right under geo1
+    network.children.side_effect = lambda: list(children)
+
+    def createNode(node_type, name):
+        geo = _item(f"/obj/{name}", 0, 0)
+        geo.setPosition.side_effect = lambda pos: geo.position.configure_mock(return_value=pos)
+        children.append(geo)
+        return geo
+
+    network.createNode.side_effect = createNode
+    container.parent.return_value = network
+    selected = []
+    for name in ("a", "b"):
+        node = MagicMock()
+        node.name.return_value = name
+        node.parent.return_value = container
+        selected.append(node)
+    monkeypatch.setattr(hou, "selectedNodes", lambda: selected, raising=False)
+
+    assert runner.runScript(ROOT / "lib" / "single" / "null" / "create_render_node.py")
+
+    first, second = children[2], children[3]
+    assert first.position() == (0, -2)  # (0, -1) is taken
+    assert second.position() == (1.5, -1)  # next to it in a row
+
+
+class _SequenceParm:
+    """File parm whose value has the frame in it like $F4"""
+
+    def __init__(self, template):
+        self.template = template
+
+    def evalAtFrame(self, frame):
+        return self.template.format(frame=f"{frame:04d}")
+
+
+def test_sequence_frames_found_on_disk(tmp_path):
+    from hotbox.common import frames
+
+    for frame in (1001, 1002, 1010):
+        (tmp_path / f"geo.{frame:04d}.bgeo.sc").write_text("")
+    (tmp_path / "geo.1001.bgeo.sc.tmp").write_text("")
+    (tmp_path / "other.1005.bgeo.sc").write_text("")
+    parm = _SequenceParm(tmp_path.as_posix() + "/geo.{frame}.bgeo.sc")
+
+    assert frames.sequencePattern(parm) == (tmp_path.as_posix(), "geo.", ".bgeo.sc")
+    assert frames.sequenceFrames(parm) == [1001, 1002, 1010]
+    assert frames.sequenceFrames(_SequenceParm("/no/such/folder/geo.{frame}.exr")) == []
+    assert frames.sequencePattern(_SequenceParm(tmp_path.as_posix() + "/static.bgeo")) is None
+    assert frames.sequencePattern(_SequenceParm(tmp_path.as_posix() + "/{frame}/geo.bgeo")) is None  # frame folders
+
+
+def test_frame_range_from_keyframes(hou, monkeypatch):
+    from hotbox.common import frames
+
+    monkeypatch.setattr(paths, "fileParms", lambda node, include_hidden=False: [])
+    keys = [MagicMock(), MagicMock(), MagicMock()]
+    for key, frame in zip(keys, (1001.0, 1050.0, 1100.0)):
+        key.frame.return_value = frame
+    camera = MagicMock()
+    camera.parms.return_value = [MagicMock(keyframes=lambda: keys[:2]), MagicMock(keyframes=lambda: keys[2:])]
+    static = MagicMock()
+    static.parms.return_value = [MagicMock(keyframes=list)]
+    monkeypatch.setattr(hou, "selectedNodes", lambda: [camera, static], raising=False)
+    monkeypatch.setattr(hou, "playbar", MagicMock(), raising=False)
+
+    assert frames.frameRangeFromSelection() == (1001, 1100)
+    hou.playbar.setFrameRange.assert_called_once_with(1001, 1100)
+    hou.playbar.setPlaybackRange.assert_called_once_with(1001, 1100)
+
+
+def test_missing_files_skip_outputs_existing_files_and_sequences(hou, monkeypatch, tmp_path):
+    (tmp_path / "here.abc").write_text("")
+    (tmp_path / "seq.1001.exr").write_text("")
+    monkeypatch.setattr(hou, "ropNodeTypeCategory", lambda: "Driver", raising=False)
+
+    def parm(path, value, write=False, sequence=None):
+        p = MagicMock()
+        p.path.return_value = path
+        p.eval.return_value = value
+        p.isDisabled.return_value = False
+        p.node().isInsideLockedHDA.return_value = False
+        p.node().type().category.return_value = "Sop"
+        p.parmTemplate().tags.return_value = {"filechooser_mode": "write"} if write else {}
+        p.evalAtFrame.side_effect = (lambda f: sequence.format(frame=f)) if sequence else (lambda f: value)
+        return p
+
+    lost = parm("/obj/geo/file1/file", "/nowhere/lost.bgeo")
+    refs = [
+        (lost, ""),
+        (lost, ""),  # same parm twice
+        (parm("/obj/geo/abc/fileName", (tmp_path / "here.abc").as_posix()), ""),
+        (parm("/obj/geo/cache/sopoutput", "/nowhere/out.bgeo", write=True), ""),
+        (parm("/obj/geo/seq/file", (tmp_path / "seq.0999.exr").as_posix(),
+              sequence=tmp_path.as_posix() + "/seq.{frame}.exr"), ""),
+        (parm("/obj/geo/op/file", "op:/obj/geo/null1"), ""),
+        (None, "/hda/path"),
+    ]
+    monkeypatch.setattr(hou, "fileReferences", lambda: refs, raising=False)
+
+    assert paths.missingFiles() == [(lost, "/nowhere/lost.bgeo")]
+
+
+def test_sop_import_names_prims_after_the_source(hou, monkeypatch):
+    from conftest import ROOT
+    from hotbox.common import panes
+    from hotbox.utils import runner
+
+    network = MagicMock()
+    network.childTypeCategory().name.return_value = "Lop"
+    pane = MagicMock()
+    pane.pwd.return_value = network
+    monkeypatch.setattr(panes, "networkPane", lambda: pane)
+    source = MagicMock()
+    source.name.return_value = "OUT_rock"
+    monkeypatch.setattr(hou, "node", lambda path: source, raising=False)
+    hou.ui.getTextFromClipboard.return_value = "/obj/geo1/OUT_rock"
+    created = MagicMock()
+    network.createNode.return_value = created
+
+    assert runner.runScript(ROOT / "lib" / "all" / "Lop" / "sop_import.py")
+
+    network.createNode.assert_called_once_with("sopimport", "IMPORT_OUT_rock")
+    created.parm("pathprefix").set.assert_any_call("/geo/OUT_rock")
+    created.setUserData.assert_called_once_with("nodeshape", "chevron_up")

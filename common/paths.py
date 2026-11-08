@@ -1,6 +1,7 @@
 """File parameters and path conversion."""
 from __future__ import annotations
 
+import os
 import posixpath
 import sys
 
@@ -63,14 +64,14 @@ def _allParmTemplates(group_or_folder):
             yield from _allParmTemplates(parm_template)
 
 
-def fileParms(node) -> list[str]:
-    """Names of the visible file reference parameters, multiparm instances expanded"""
+def fileParms(node, include_hidden: bool = False) -> list[str]:
+    """Names of the file reference parameters (visible ones by default), multiparm instances expanded"""
     names = [
         t.name()
         for t in _allParmTemplates(node.parmTemplateGroup())
         if t.type() == hou.parmTemplateType.String
         and t.stringType() == hou.stringParmType.FileReference
-        and not t.isHidden()
+        and (include_hidden or not t.isHidden())
     ]
     result = [name for name in names if "#" not in name]
     for name in names:
@@ -84,3 +85,71 @@ def fileParms(node) -> list[str]:
             if parm:
                 result.append(parm.name())
     return result
+
+
+NOT_FILES = ("op:", "opdef:", "oplib:", "temp:", "stage:")
+
+
+def isOutputParm(parm) -> bool:
+    """Parameter a node writes to (ROP output, cache output): its file may not exist yet"""
+    try:
+        if parm.node().type().category() == hou.ropNodeTypeCategory():
+            return True
+        return parm.parmTemplate().tags().get("filechooser_mode") == "write"
+    except hou.OperationFailed:
+        return False
+
+
+def sceneFileParms() -> list:
+    """Every file parameter of the scene that reads a file: no outputs, no disabled ones, nothing inside locked HDAs"""
+    result, seen = [], set()
+    for parm, _ in hou.fileReferences():
+        if parm is None or parm.path() in seen:
+            continue
+        seen.add(parm.path())
+        node = parm.node()
+        if node.isInsideLockedHDA() or parm.isDisabled() or isOutputParm(parm):
+            continue
+        result.append(parm)
+    return result
+
+
+def missingFiles() -> list[tuple]:
+    """(parm, evaluated path) of the read files that don't exist; a sequence counts as found if any frame exists"""
+    from . import frames
+
+    missing = []
+    for parm in sceneFileParms():
+        path = parm.eval()
+        if not path or path.startswith(NOT_FILES) or "://" in path or os.path.exists(path):
+            continue
+        if frames.sequenceFrames(parm):
+            continue
+        missing.append((parm, path))
+    return missing
+
+
+RELOAD_BUTTONS = ("reload", "reloadgeo", "reloadfile")
+
+
+def reloadFileNodes() -> list:
+    """Press the Reload button of every node that reads files (File, Alembic, File Cache, Sublayer...).
+    Returns the reloaded nodes."""
+    try:
+        import _alembic_hom_extensions as alembic
+        alembic.alembicClearArchiveCache()  # files rewritten outside: drop the cached archives first
+    except (ImportError, AttributeError):
+        pass
+    reloaded, seen = [], set()
+    for parm in sceneFileParms():
+        node = parm.node()
+        if node.path() in seen:
+            continue
+        seen.add(node.path())
+        for name in RELOAD_BUTTONS:
+            button = node.parm(name)
+            if button is not None and button.parmTemplate().type() == hou.parmTemplateType.Button:
+                button.pressButton()
+                reloaded.append(node)
+                break
+    return reloaded

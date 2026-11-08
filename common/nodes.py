@@ -45,11 +45,13 @@ def styleLikeSource(node, source, shape: str | None = None) -> None:
 
 
 def pasteMergeNodes(category: str, node_type: str, path_parm: str, relative: bool, extra_parms=None,
-                    shape: str | None = None, copy_color: bool = False) -> list:
-    """Object Merge / Fetch for each node in the clipboard, at the cursor of the Network Editor.
+                    shape: str | None = None, copy_color: bool = False, prefix: str = "MERGE_") -> list:
+    """Object Merge / Fetch / SOP Import for each node in the clipboard, at the cursor of the Network Editor.
 
-    category: network type the tool works in ("Sop", "Lop"); extra_parms: {name: value} set on each node;
-    shape / copy_color: node shape of the created nodes, color taken from the copied node.
+    category: network type the tool works in ("Sop", "Lop");
+    extra_parms: {name: value} set on each node, a callable value gets the source node: {"pathprefix": f(source)};
+    shape / copy_color: node shape of the created nodes, color taken from the copied node;
+    prefix: name of the created node is prefix + source name.
     """
     pane = panes.networkPane()
     if pane is None:
@@ -66,14 +68,32 @@ def pasteMergeNodes(category: str, node_type: str, path_parm: str, relative: boo
 
     created = []
     for i, source in enumerate(sources):
-        node = network.createNode(node_type, f"MERGE_{source.name()}")
+        node = network.createNode(node_type, f"{prefix}{source.name()}")
         node.setPosition(pane.cursorPosition() + hou.Vector2(i * 3, 0) - hou.Vector2(0.5, 0))
         node.parm(path_parm).set(node.relativePathTo(source) if relative else source.path())
         for name, value in (extra_parms or {}).items():
-            node.parm(name).set(value)
+            node.parm(name).set(value(source) if callable(value) else value)
         if copy_color:
             styleLikeSource(node, source, shape)
         elif shape:
             node.setUserData("nodeshape", shape)
         created.append(node)
     return created
+
+
+def _overlaps(position, size, item, pad: float) -> bool:
+    other, other_size = item.position(), item.size()
+    return (position[0] < other[0] + other_size[0] + pad and other[0] < position[0] + size[0] + pad
+            and position[1] < other[1] + other_size[1] + pad and other[1] < position[1] + size[1] + pad)
+
+
+def freePosition(network, position, size=(1.0, 0.3), step: float = 1.0, pad: float = 0.2, ignore=()):
+    """First spot at or below position where a node of this size doesn't cover any item of the network"""
+    ignore = {item.path() for item in ignore}
+    items = [item for item in network.children() if item.path() not in ignore]
+    x, y = position[0], position[1]
+    for _ in range(1000):
+        if not any(_overlaps((x, y), size, item, pad) for item in items):
+            break
+        y -= step
+    return hou.Vector2(x, y)
