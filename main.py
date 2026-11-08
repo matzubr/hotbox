@@ -21,7 +21,6 @@ from .utils.qt import (
     QPoint,
     QPropertyAnimation,
     Qt,
-    QTimer,
     QUrl,
     QVBoxLayout,
     QWidget,
@@ -37,7 +36,7 @@ def start():
 
 class HotBox(QWidget):
     FADE_IN = 120  # ms
-    HOTKEY_FEEDBACK = 90  # ms the pressed button is visible before the script runs
+    FADE_OUT = widgets.Button.PRESS_MS  # the menu fades together with the pressed button
 
     def __init__(self, lib_dir: Path = LIB_DIR):
         super().__init__(hou.qt.mainWindow())
@@ -45,23 +44,28 @@ class HotBox(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_DeleteOnClose)
+        self._triggered = False
 
         self.context = utility.detectContext()
         self.initUI()
         self.adjustSize()
         self.setPositionFromMouse()
-        self._triggered = False
         self.fadeIn()
         self.show()
 
+    def _fade(self, start: float, end: float, duration: int, finished=None):
+        self._fadeAnimation = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fadeAnimation.setDuration(duration)
+        self._fadeAnimation.setStartValue(start)
+        self._fadeAnimation.setEndValue(end)
+        self._fadeAnimation.setEasingCurve(QEasingCurve.OutCubic)
+        if finished is not None:
+            self._fadeAnimation.finished.connect(finished)
+        self._fadeAnimation.start()
+
     def fadeIn(self):
         self.setWindowOpacity(0.0)
-        self._fade = QPropertyAnimation(self, b"windowOpacity", self)
-        self._fade.setDuration(self.FADE_IN)
-        self._fade.setStartValue(0.0)
-        self._fade.setEndValue(1.0)
-        self._fade.setEasingCurve(QEasingCurve.OutCubic)
-        self._fade.start()
+        self._fade(0.0, 1.0, self.FADE_IN)
 
     @property
     def mode(self) -> str:
@@ -70,8 +74,6 @@ class HotBox(QWidget):
     def initUI(self):
         library = scripts.scanScripts(self.lib_dir / self.mode)
         self.scripts_buttons = widgets.ScriptGrid(library, context=self.context.context, parent=self)
-        for button in self.scripts_buttons.buttons:
-            button.clicked.connect(lambda checked=False, b=button: self.runScript(b.script))
         self.keybindings = self.scripts_buttons.keybindings()
 
         self.open_hotbox_button = widgets.Button("Open HotBox folder")
@@ -79,19 +81,43 @@ class HotBox(QWidget):
         self.script_manager_button = widgets.Button("Script Manager")
 
         central_layout = widgets.HLayout([self.open_hotbox_button, self.central_button, self.script_manager_button])
+        central_layout.setSpacing(widgets.ScriptGrid.COLUMN_GAP)
+        central_layout.setAlignment(Qt.AlignHCenter)
 
         layout = QVBoxLayout()
-        layout.addWidget(self.scripts_buttons)
+        layout.addWidget(self.scripts_buttons, 0, Qt.AlignHCenter)
         layout.addLayout(central_layout)
         self.setLayout(layout)
 
-        self.open_hotbox_button.clicked.connect(self.openHotboxFolder)
-        self.central_button.clicked.connect(self.close)
-        self.script_manager_button.clicked.connect(self.startManager)
+        actions = {button: (lambda s=button.script: self.runScript(s)) for button in self.scripts_buttons.buttons}
+        actions[self.open_hotbox_button] = self.openHotboxFolder
+        actions[self.central_button] = None  # just close
+        actions[self.script_manager_button] = self.startManager
+        for button, action in actions.items():
+            button.clicked.connect(lambda checked=False, b=button, a=action: self.trigger(b, a))
+
+    def trigger(self, button, action=None):
+        """Pressed button grows and fades out, the menu fades out with it, then the action runs.
+
+        The hotbox is closed before the action: scripts open dialogs, select nodes in the viewport, etc.
+        Only the first trigger counts.
+        """
+        if self._triggered:
+            return
+        self._triggered = True
+
+        def finish():
+            self.hide()
+            try:
+                if action is not None:
+                    action()
+            finally:
+                self.close()
+
+        button.playPress()
+        self._fade(self.windowOpacity(), 0.0, self.FADE_OUT, finish)
 
     def runScript(self, script):
-        # Close first: scripts open dialogs, select nodes in the viewport, etc.
-        self.close()
         if script.runPath is None:
             runner.status(f"HotBox: {script.relpath}: {script.error}", error=True)
             return
@@ -104,19 +130,15 @@ class HotBox(QWidget):
             return
         button = next((self.keybindings[code] for code in codes if code in self.keybindings), None)
         if button is not None and not event.isAutoRepeat():
-            if not self._triggered:  # one script per hotbox
-                self._triggered = True
-                button.flash()
-                QTimer.singleShot(self.HOTKEY_FEEDBACK, button.click)
+            button.startHover()
+            self.trigger(button, lambda s=button.script: self.runScript(s))
             return
         super().keyPressEvent(event)
 
     def openHotboxFolder(self):
-        self.close()
         QDesktopServices.openUrl(QUrl.fromLocalFile(PACKAGE_DIR.as_posix()))
 
     def startManager(self):
-        self.close()
         return widgets.ScriptManager(lib_folder=self.lib_dir)
 
     def setPositionFromMouse(self):

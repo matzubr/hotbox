@@ -35,20 +35,33 @@ def _columns(grid):
 
 
 def test_grid_columns_and_groups(houdini, library):
-    from hotbox.utils.widgets import GroupBlock, ScriptGrid
+    from hotbox.utils.widgets import ScriptGrid
 
     write_script(library, "all/Sop/vdb.py", "#label:Activate VDB\n")
     grid = ScriptGrid(scripts.scanScripts(library / "all"), context="Sop")
+    grid.adjustSize()
 
     assert _columns(grid) == [
         [("", ["Sop/vdb.py"]), ("Merge", ["Sop/merge_abs.py", "Sop/merge_rel.py"])],
         [("", ["flipbook.py"]), ("", ["save.py"]), ("", ["script_manager_test.py"])],
     ]
-    blocks = grid.findChildren(GroupBlock)
-    assert len(blocks) == 1
-    first, second = grid.columns[0][1][1]
-    assert first.parentWidget() is blocks[0] and first.y() == second.y()  # side by side in the group
-    assert [b.text() for b in grid.columns[0][1][1]] == ["Merge\nAbsolute (2)", "Merge\nRelative (1)"]
+    vdb, (merge_abs, merge_rel) = grid.columns[0][0][1][0], grid.columns[0][1][1]
+    flipbook, save, third = (block[1][0] for block in grid.columns[1])
+    # one grid: rows are on the same level in every column, groups go down, not sideways
+    assert [b.y() for b in (vdb, merge_abs, merge_rel)] == [b.y() for b in (flipbook, save, third)]
+    assert merge_abs.x() == merge_rel.x() < flipbook.x()
+    # group frame with its caption fits in the gap above the group, below the previous button
+    frame = grid.groupFrame([merge_abs, merge_rel])
+    assert frame.top() > vdb.visualRect().translated(vdb.pos()).bottom()
+
+
+def test_grid_long_columns_wrap(houdini, tmp_path):
+    from hotbox.utils.widgets import ScriptGrid
+
+    for i in range(ScriptGrid.MAX_ROWS + 2):
+        write_script(tmp_path, f"all/s{i}.py", f"#label:Script {i}\n")
+    grid = ScriptGrid(scripts.scanScripts(tmp_path / "all"))
+    assert [sum(len(b) for _, b in column) for column in grid.columns] == [ScriptGrid.MAX_ROWS, 2]
 
 
 def test_grid_root_only_is_one_column(houdini, library):
@@ -61,6 +74,7 @@ def test_grid_root_only_is_one_column(houdini, library):
 def test_broken_ref_button(houdini, library, hou, monkeypatch):
     from hotbox import main  # noqa: F401
     from hotbox.utils import runner
+    from PySide6.QtTest import QTest
 
     write_script(library, "all/old.py", "#ref:all/missing.py\n#label:Old\n", body="")
     ran = MagicMock()
@@ -70,6 +84,7 @@ def test_broken_ref_button(houdini, library, hou, monkeypatch):
     assert "not found" in button.toolTip()
 
     button.click()
+    QTest.qWait(box.FADE_OUT + 150)
 
     ran.assert_not_called()
     assert "not found" in hou.ui.setStatusMessage.call_args.args[0]
@@ -78,19 +93,28 @@ def test_broken_ref_button(houdini, library, hou, monkeypatch):
 def test_button_hover_and_press_animation(houdini, qapp):
     from hotbox.utils.widgets import Button
     from PySide6.QtCore import QPointF
-    from PySide6.QtGui import QEnterEvent
     from PySide6.QtTest import QTest
 
     button = Button("x", buttonColor="#222222")
     base = button.background()
-    button.enterEvent(QEnterEvent(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1)))
-    QTest.qWait(Button.DURATION + 100)
-    assert button.background() == button.hoverColor != base
+    assert button.scale() == 1.0
 
-    button.flash()
-    assert button.background() == button.pressedColor
-    QTest.qWait(Button.DURATION + 100)
-    assert button.background() in (button.baseColor, button.hoverColor)
+    button.startHover(QPointF(30, 20))
+    QTest.qWait(Button.HOVER_MS // 3)
+    assert 0 < button.ripple < 1  # wave is spreading from the cursor
+    QTest.qWait(Button.RIPPLE_MS + 100)
+    assert button.hover == 1.0 and button.ripple == 1.0
+    assert button.background().lightness() > base.lightness() and button.scale() == Button.HOVER_SCALE
+    button.grab()  # paints without errors
+
+    done = []
+    button.playPress(lambda: done.append(True))
+    QTest.qWait(Button.PRESS_MS + 100)
+    assert done and button.press == 1.0 and button.scale() == Button.PRESS_SCALE
+
+    # the press zoom fits in the widget
+    rect = button.visualRect()
+    assert rect.width() * Button.PRESS_SCALE <= button.width() and rect.height() * Button.PRESS_SCALE <= button.height()
 
 
 def _hotbox(monkeypatch, hou, library, context="Sop"):
@@ -114,7 +138,7 @@ def test_hotkey_runs_script_and_closes(houdini, hou, library, monkeypatch, qapp)
 
     QTest.keyClick(box, Qt.Key_2)
     QTest.keyClick(box, Qt.Key_1)  # only the first hotkey counts
-    QTest.qWait(box.HOTKEY_FEEDBACK + 100)
+    QTest.qWait(box.FADE_OUT + 150)
 
     assert ran.call_count == 1
     assert ran.call_args.args[0] == library / "all" / "Sop" / "merge_abs.py"
@@ -134,7 +158,7 @@ def test_hotkey_in_russian_layout(houdini, hou, library, monkeypatch):
 
     # 'а' is on the F key in the Russian layout; Qt reports the Cyrillic key code
     box.keyPressEvent(QKeyEvent(QEvent.KeyPress, 0x0410, Qt.NoModifier, "а"))
-    QTest.qWait(box.HOTKEY_FEEDBACK + 100)
+    QTest.qWait(box.FADE_OUT + 150)
 
     assert ran.call_args.args[0] == library / "all" / "flipbook.py"
 
@@ -145,6 +169,7 @@ def test_bundled_font_is_used(houdini):
 
     widgets.Button("x")
     assert widgets.FONT_FAMILY in QFontDatabase.families()
+    assert widgets.buttonFont().weight() == widgets.QFont.ExtraBold
 
 
 def test_escape_closes(houdini, hou, library, monkeypatch):

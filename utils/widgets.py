@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
-from textwrap import wrap
 
 import hou
 
@@ -13,6 +13,7 @@ from .qt import (
     QEasingCurve,
     QFont,
     QFontDatabase,
+    QFontMetrics,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -21,8 +22,13 @@ from .qt import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QPainter,
+    QPainterPath,
     QPixmap,
+    QPointF,
     QPushButton,
+    QRadialGradient,
+    QRectF,
     QSize,
     Qt,
     QUrl,
@@ -33,22 +39,48 @@ from .qt import (
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
 ICONS_DIR = PACKAGE_DIR / "icons"
-FONT_FILE = PACKAGE_DIR / "fonts" / "JosefinSans.ttf"
-FONT_FAMILY = "Josefin Sans"
-FONT_SIZE = 16
+# Static ExtraBold cut: a variable font may render with its thinnest weight in Houdini's Qt
+FONT_FILE = PACKAGE_DIR / "fonts" / "Nunito-ExtraBold.ttf"
+FONT_FAMILY = "Nunito"
+FONT_SIZE = 14  # points
 CLOSE_KEYS = (int(Qt.Key_Escape), int(Qt.Key_QuoteLeft))  # Esc and `
+WHITE = QColor("#ffffff")
 
 _font_loaded = False
 
 
 def loadFont() -> None:
-    """Register the bundled Josefin Sans (SIL OFL, fonts/OFL.txt) once per Houdini session"""
+    """Register the bundled Nunito ExtraBold (SIL OFL, fonts/OFL.txt) once per Houdini session"""
     global _font_loaded
     if _font_loaded:
         return
     _font_loaded = True
     if QFontDatabase.addApplicationFont(FONT_FILE.as_posix()) < 0:
         print(f"HotBox: can't load {FONT_FILE.as_posix()}, using the system font")
+
+
+def buttonFont(size: float = FONT_SIZE) -> QFont:
+    loadFont()
+    font = QFont(FONT_FAMILY)
+    font.setPointSizeF(size)
+    font.setWeight(QFont.ExtraBold)
+    return font
+
+
+def fitText(text: str, width: int, max_lines: int = 2) -> tuple[list[str], QFont]:
+    """Word wrap measured in pixels; when it takes more than max_lines the font gets smaller"""
+    for size in (FONT_SIZE, FONT_SIZE - 2, FONT_SIZE - 3):
+        font = buttonFont(size)
+        metrics = QFontMetrics(font)
+        lines: list[str] = []
+        for word in text.split():
+            if lines and metrics.horizontalAdvance(f"{lines[-1]} {word}") <= width:
+                lines[-1] += f" {word}"
+            else:
+                lines.append(word)
+        if len(lines) <= max_lines:
+            break
+    return lines or [text], font
 
 
 def keyCode(hotkey: str | None) -> int | None:
@@ -86,107 +118,163 @@ def mixColor(color: QColor, other: QColor, amount: float) -> QColor:
     )
 
 
+def _eventPos(event) -> QPointF:
+    return QPointF(event.position()) if hasattr(event, "position") else QPointF(event.pos())
+
+
 class Button(QPushButton):
-    """Flat rounded button with a wrapped label; background animates on hover and press"""
+    """Rounded button painted by hand so it can animate:
 
-    HOVER = 0.12  # towards white
-    PRESSED = 0.28
-    DURATION = 140  # ms
+    - hover: a white wave spreads from the cursor, the button gets lighter and a bit bigger (text too)
+    - press (playPress): grows and fades out
 
-    def __init__(
-        self,
-        label: str = "ButtonText",
-        buttonColor: str = "#222222",
-        textColor: str = "#e8e8e8",
-        icon=None,
-        buttonsize: int = 200,
-        parent=None,
-    ):
+    The widget is larger than the visible button by MARGIN so the zoom is never cut off.
+    """
+
+    WIDTH, HEIGHT, RADIUS = 200, 60, 10
+    HOVER_SCALE, PRESS_SCALE = 1.05, 1.12
+    HOVER_WHITE = 0.10  # background towards white on hover
+    RIPPLE_ALPHA = 0.35
+    HOVER_MS, RIPPLE_MS, PRESS_MS = 150, 450, 220
+    MARGIN_X = math.ceil(WIDTH * (PRESS_SCALE - 1) / 2)
+    MARGIN_Y = math.ceil(HEIGHT * (PRESS_SCALE - 1) / 2)
+
+    def __init__(self, label: str = "ButtonText", buttonColor: str = "#222222", textColor: str = "#e8e8e8",
+                 icon=None, parent=None):
         super().__init__(parent)
-        loadFont()
-        self.buttonWidth = buttonsize
-        self._animation = QVariantAnimation(self)
-        self._animation.setDuration(self.DURATION)
-        self._animation.setEasingCurve(QEasingCurve.OutCubic)
-        self._animation.valueChanged.connect(self._applyBackground)
+        self.hover = 0.0
+        self.ripple = 1.0  # 1: finished
+        self.press = 0.0
+        self.ripplePos = QPointF(self.WIDTH / 2, self.HEIGHT / 2)
+        self.iconPixmap = None
+        self._hoverAnimation = self._animation(self.HOVER_MS, "hover", QEasingCurve.OutCubic)
+        self._rippleAnimation = self._animation(self.RIPPLE_MS, "ripple", QEasingCurve.OutQuad)
+        self._pressAnimation = self._animation(self.PRESS_MS, "press", QEasingCurve.OutCubic)
 
         if isinstance(icon, (QIcon, QPixmap)):
-            self.setIcon(icon)
+            self.setIcon(QIcon(icon) if isinstance(icon, QPixmap) else icon)
         elif icon:
             filepath = ICONS_DIR / icon
             if filepath.exists():
                 self.setIcon(QIcon(filepath.as_posix()))
-                self.setIconSize(QSize(buttonsize // 6, buttonsize // 6))
             else:
                 print(f"HotBox: no icon {filepath.as_posix()}")
 
-        self.updateText(label)
         self.updateColors(buttonColor, textColor)
-        self.setFixedSize(QSize(buttonsize, int(buttonsize * 0.3)))
-        self.setFlat(True)
+        self.updateText(label)
+        self.setFixedSize(QSize(self.WIDTH + 2 * self.MARGIN_X, self.HEIGHT + 2 * self.MARGIN_Y))
         self.setFocusPolicy(Qt.ClickFocus)
-        self.setDefault(False)
+        self.setAttribute(Qt.WA_Hover)
 
-    MAX_LINES = 2
+    def _animation(self, duration: int, attribute: str, curve) -> QVariantAnimation:
+        animation = QVariantAnimation(self)
+        animation.setDuration(duration)
+        animation.setEasingCurve(curve)
+
+        def apply(value, attribute=attribute):
+            setattr(self, attribute, float(value))
+            self.update()
+
+        animation.valueChanged.connect(apply)
+        return animation
+
+    @staticmethod
+    def _run(animation: QVariantAnimation, start: float, end: float):
+        animation.stop()
+        animation.setStartValue(float(start))
+        animation.setEndValue(float(end))
+        animation.start()
+
+    # --- appearance ---------------------------------------------------------------------------------------------
 
     def updateText(self, text: str):
-        """Wrap to MAX_LINES lines; longer labels get a smaller font so they still fit the button"""
-        size = FONT_SIZE
-        line_width = int(self.buttonWidth * 0.06)
-        lines = wrap(text, line_width)
-        if len(lines) > self.MAX_LINES:
-            size = FONT_SIZE - 3
-            lines = wrap(text, int(line_width * FONT_SIZE / size))
-        self.setText("\n".join(lines) or text)
-        self.setFont(QFont(FONT_FAMILY, size, QFont.Bold))
+        self.label = text
+        self.setText(text)
+        icon_width = 32 if not self.icon().isNull() else 0
+        self.lines, self.labelFont = fitText(text, self.WIDTH - 24 - icon_width)
 
     def updateColors(self, buttonColor="#222222", textColor="#e8e8e8"):
         self.baseColor = QColor(buttonColor)
-        self.hoverColor = mixColor(self.baseColor, QColor("#ffffff"), self.HOVER)
-        self.pressedColor = mixColor(self.baseColor, QColor("#ffffff"), self.PRESSED)
-        self.textColor = textColor
-        self._applyBackground(self.baseColor)
+        self.textColor = QColor(textColor)
+        self.update()
 
     def background(self) -> QColor:
-        return QColor(self._background)
+        return mixColor(self.baseColor, WHITE, self.HOVER_WHITE * self.hover)
 
-    def _applyBackground(self, color):
-        self._background = QColor(color)
-        self.setStyleSheet(
-            f"""QPushButton{{
-                background-color:{self._background.name()};
-                color:{self.textColor};
-                border-radius:10px;
-                border:none;}}"""
-        )
+    def scale(self) -> float:
+        hover_scale = 1 + (self.HOVER_SCALE - 1) * self.hover
+        return hover_scale + (self.PRESS_SCALE - hover_scale) * self.press
 
-    def animateTo(self, color: QColor):
-        self._animation.stop()
-        self._animation.setStartValue(self.background())
-        self._animation.setEndValue(QColor(color))
-        self._animation.start()
+    def visualRect(self) -> QRectF:
+        """The button at rest, in widget coordinates"""
+        return QRectF(self.MARGIN_X, self.MARGIN_Y, self.WIDTH, self.HEIGHT)
 
-    def flash(self):
-        """Pressed look fading back: feedback for a hotkey"""
-        self._applyBackground(self.pressedColor)
-        self.animateTo(self.hoverColor if self.underMouse() else self.baseColor)
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setOpacity(1.0 - self.press)
+
+        rect = self.visualRect()
+        center = rect.center()
+        painter.translate(center)
+        painter.scale(self.scale(), self.scale())
+        painter.translate(-center)
+
+        path = QPainterPath()
+        path.addRoundedRect(rect, self.RADIUS, self.RADIUS)
+        painter.fillPath(path, self.background())
+
+        if self.ripple < 1.0:  # white wave from the cursor
+            radius = max(1.0, math.hypot(rect.width(), rect.height()) * self.ripple)
+            alpha = self.RIPPLE_ALPHA * (1.0 - self.ripple)
+            gradient = QRadialGradient(self.ripplePos, radius)
+            gradient.setColorAt(0.0, QColor(255, 255, 255, int(255 * alpha * 0.35)))
+            gradient.setColorAt(0.8, QColor(255, 255, 255, int(255 * alpha)))
+            gradient.setColorAt(1.0, QColor(255, 255, 255, 0))
+            painter.save()
+            painter.setClipPath(path)
+            painter.fillRect(rect, gradient)
+            painter.restore()
+
+        painter.setFont(self.labelFont)
+        painter.setPen(self.textColor)
+        metrics = QFontMetrics(self.labelFont)
+        text_width = max(metrics.horizontalAdvance(line) for line in self.lines)
+        text_height = metrics.height() * len(self.lines)
+        icon = self.icon()
+        icon_size = 28 if not icon.isNull() else 0
+        gap = 6 if icon_size else 0
+        x = rect.center().x() - (icon_size + gap + text_width) / 2
+        if icon_size:
+            icon.paint(painter, int(x), int(rect.center().y() - icon_size / 2), icon_size, icon_size)
+        text_rect = QRectF(x + icon_size + gap, rect.center().y() - text_height / 2, text_width, text_height)
+        painter.drawText(text_rect, Qt.AlignCenter, "\n".join(self.lines))
+        painter.end()
+
+    # --- animation ----------------------------------------------------------------------------------------------
+
+    def startHover(self, pos: QPointF | None = None):
+        self.ripplePos = pos if pos is not None else self.visualRect().center()
+        self._run(self._rippleAnimation, 0.0, 1.0)
+        self._run(self._hoverAnimation, self.hover, 1.0)
+
+    def endHover(self):
+        self._run(self._hoverAnimation, self.hover, 0.0)
+
+    def playPress(self, finished=None):
+        """Grow and fade out; finished() is called at the end"""
+        if finished is not None:
+            self._pressAnimation.finished.connect(finished)
+        self._run(self._pressAnimation, 0.0, 1.0)
 
     def enterEvent(self, event):
-        self.animateTo(self.hoverColor)
+        self.startHover(_eventPos(event))
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.animateTo(self.baseColor)
+        self.endHover()
         super().leaveEvent(event)
-
-    def mousePressEvent(self, event):
-        self._animation.stop()
-        self._applyBackground(self.pressedColor)
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        self.animateTo(self.hoverColor if self.underMouse() else self.baseColor)
-        super().mouseReleaseEvent(event)
 
 
 class ScriptButton(Button):
@@ -194,10 +282,10 @@ class ScriptButton(Button):
 
     BROKEN_TEXT = "#ff6b6b"
 
-    def __init__(self, script: script_lib.Script, buttonsize: int = 200, parent=None):
+    def __init__(self, script: script_lib.Script, parent=None):
         label = f"{script.label} ({script.hotkey})" if script.hotkey else script.label
         text_color = self.BROKEN_TEXT if script.error else script.textcolor
-        super().__init__(label, script.buttoncolor, text_color, script.icon, buttonsize, parent)
+        super().__init__(label, script.buttoncolor, text_color, script.icon, parent)
         self.script = script
         self.hotkey = script.hotkey
         tooltip = script.relpath
@@ -208,66 +296,88 @@ class ScriptButton(Button):
         self.setToolTip(tooltip)
 
 
-class GroupBlock(QFrame):
-    """Buttons of one #group with a caption, GROUP_COLUMNS buttons per row"""
-
-    GROUP_COLUMNS = 2
-
-    def __init__(self, name: str, buttons: list[ScriptButton], parent=None):
-        super().__init__(parent)
-        self.setObjectName("GroupBlock")
-        self.setStyleSheet("#GroupBlock{background-color:rgba(255,255,255,10); border-radius:12px;}")
-        caption = QLabel(name, self)
-        caption.setFont(QFont(FONT_FAMILY, FONT_SIZE - 4, QFont.Bold))
-        caption.setStyleSheet("color:rgba(232,232,232,150); background:transparent;")
-
-        grid = QGridLayout()
-        grid.setSpacing(6)
-        for index, button in enumerate(buttons):
-            grid.addWidget(button, index // self.GROUP_COLUMNS, index % self.GROUP_COLUMNS)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 6)
-        layout.setSpacing(4)
-        layout.addWidget(caption)
-        layout.addLayout(grid)
-
-
 class ScriptGrid(QWidget):
-    """Context scripts in the left column, root scripts in the right one.
+    """Buttons on one grid, so every row is on the same level in all columns.
 
-    Each column is a stack of blocks from the top: single buttons and #group blocks, sorted by name.
+    Columns go top to bottom: context scripts first, then root scripts in their own column(s); a column
+    takes at most MAX_ROWS buttons, then the next one starts. #group blocks are never split, their frame and
+    caption are painted behind the buttons in the gap above them.
     """
+
+    MAX_ROWS = 6
+    ROW_GAP = 18  # between button widgets (the visible gap adds 2 * Button.MARGIN_Y)
+    COLUMN_GAP = 4  # (+ 2 * Button.MARGIN_X)
+    CAPTION_HEIGHT = 16
+    FRAME_PAD = 5
 
     def __init__(self, scripts: list[script_lib.Script], context: str = "", parent: QWidget = None):
         super().__init__(parent)
         in_context, root = script_lib.scriptsForContext(scripts, context)
 
-        layout = QHBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 10)
-        layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
         self.buttons: list[ScriptButton] = []
         self.columns: list[list[tuple[str, list[ScriptButton]]]] = []
+        self.groups: list[tuple[str, list[ScriptButton]]] = []
         for column_scripts in (in_context, root):
-            if not column_scripts:
-                continue
-            column_layout = QVBoxLayout()
-            column_layout.setAlignment(Qt.AlignTop)
-            column = []
-            for name, block_scripts in script_lib.groupBlocks(column_scripts):
-                buttons = [ScriptButton(script) for script in block_scripts]
-                self.buttons += buttons
-                column.append((name, buttons))
-                if name:
-                    column_layout.addWidget(GroupBlock(name, buttons))
-                else:
-                    column_layout.addWidget(buttons[0], 0, Qt.AlignLeft)
-            self.columns.append(column)
-            layout.addLayout(column_layout)
-        self.setLayout(layout)
+            for column in self.splitColumns(script_lib.groupBlocks(column_scripts)):
+                blocks = []
+                for name, block_scripts in column:
+                    buttons = [ScriptButton(script, parent=self) for script in block_scripts]
+                    self.buttons += buttons
+                    blocks.append((name, buttons))
+                    if name:
+                        self.groups.append((name, buttons))
+                self.columns.append(blocks)
+
+        layout = QGridLayout(self)
+        layout.setContentsMargins(self.FRAME_PAD, self.CAPTION_HEIGHT + 4, self.FRAME_PAD, 4)
+        layout.setHorizontalSpacing(self.COLUMN_GAP)
+        layout.setVerticalSpacing(self.ROW_GAP)
+        for column_index, column in enumerate(self.columns):
+            row = 0
+            for _name, buttons in column:
+                for button in buttons:
+                    layout.addWidget(button, row, column_index, Qt.AlignTop)
+                    row += 1
 
         for key, paths in script_lib.duplicateHotkeys(in_context + root).items():
             print(f"HotBox: hotkey '{key}' is used by several scripts, the last one wins: {', '.join(paths)}")
+
+    @classmethod
+    def splitColumns(cls, blocks):
+        columns = []
+        for block in blocks:
+            if not columns or sum(len(b[1]) for b in columns[-1]) + len(block[1]) > cls.MAX_ROWS:
+                columns.append([])
+            columns[-1].append(block)
+        return [column for column in columns if column]
+
+    def buttonRow(self, button) -> int:
+        layout = self.layout()
+        return layout.getItemPosition(layout.indexOf(button))[0]
+
+    def groupFrame(self, buttons) -> QRectF:
+        rect = QRectF()
+        for button in buttons:
+            rect = rect.united(button.visualRect().translated(QPointF(button.pos())))
+        pad = self.FRAME_PAD
+        return rect.adjusted(-pad, -(self.CAPTION_HEIGHT + 2), pad, pad)
+
+    def paintEvent(self, event):
+        if not self.groups:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        caption_font = buttonFont(FONT_SIZE - 4)
+        for name, buttons in self.groups:
+            frame = self.groupFrame(buttons)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 14))
+            painter.drawRoundedRect(frame, 12, 12)
+            painter.setFont(caption_font)
+            painter.setPen(QColor(232, 232, 232, 150))
+            caption = QRectF(frame.left() + 10, frame.top() + 1, frame.width() - 20, self.CAPTION_HEIGHT)
+            painter.drawText(caption, Qt.AlignLeft | Qt.AlignVCenter, name)
+        painter.end()
 
     def keybindings(self) -> dict[int, ScriptButton]:
         bindings = {}

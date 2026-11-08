@@ -18,14 +18,18 @@ what you are doing and runs them.
 
 Deeper folders (`lib/all/Lop/Instances/`) are not shown.
 
-In each column single buttons and `#group` blocks are stacked from the top, sorted by group name / label
-(not by file names). A group shows its buttons two per row under a caption; a group with one button is a plain button.
+Buttons go top to bottom in columns (context scripts, then root scripts), at most 6 per column, and all
+columns share one grid, so rows are on the same level. Single buttons and `#group` blocks are sorted by group name /
+label (not by file names). A group is a framed block with a caption; it is never split between columns; a group with
+one button is a plain button.
 
 Bottom row: open the HotBox folder · current context (click to close) · Script Manager.
 `Esc` or `` ` `` closes the hotbox. Clicking a button or pressing its hotkey closes the hotbox and runs the script.
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
-Everything a script does is one undo step. Buttons light up on hover and press; a hotkey flashes its button
-before the script runs.
+Everything a script does is one undo step.
+
+Animations: on hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
+On click or hotkey the button grows and fades out while the whole menu fades out, then the script runs.
 
 ## Adding a script
 
@@ -123,5 +127,5 @@ uv run ruff check __init__.py main.py common utils tests
 
 ## Credits
 
-Buttons use [Josefin Sans](https://github.com/ThomasJockin/JosefinSansFont-master) (`fonts/`), SIL Open Font License 1.1,
-see `fonts/OFL.txt`.
+Buttons use [Nunito](https://github.com/googlefonts/nunito) ExtraBold (`fonts/`, a static cut of the variable font),
+SIL Open Font License 1.1, see `fonts/OFL.txt`.
