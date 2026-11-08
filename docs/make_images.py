@@ -1,6 +1,6 @@
 """README images, rendered offscreen with the real widgets.
 
-    uv run --with pillow python docs/make_images.py
+    uv run python docs/make_images.py      (needs ffmpeg for the GIF)
 
 hou is stubbed like in the tests, so Houdini icons (SOP_null, OBJ_camera...) are not drawn.
 The images use a copy of lib/ where every package is called 'studio-name': no real studio names in public images.
@@ -9,12 +9,11 @@ import builtins
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import types
 from pathlib import Path
-
-from PIL import Image
 
 # Package settings in a temp file: the user's own choice doesn't change the images
 os.environ["HOTBOX_SETTINGS"] = Path(tempfile.mkdtemp(), "hotbox", "settings.json").as_posix()
@@ -86,7 +85,7 @@ def main():
     box._fadeAnimation.stop()
     box.setWindowOpacity(1)
     app.processEvents()
-    onBackground(box).save((DOCS / "hotbox.png").as_posix())
+    onBackground(box).save((DOCS / "menu.png").as_posix())
 
     # Animation: hover one button, then move to another
     frames = []
@@ -108,7 +107,7 @@ def main():
     record(16)
     record(6, wait=False)
     box.close()
-    saveGif(frames, DOCS / "hotbox_animation.gif")
+    saveGif(frames, DOCS / "hover.gif")
 
     script_manager = manager.ScriptManager(lib_folder=Path("lib"))
     script_manager._fadeAnimation.stop()
@@ -119,38 +118,31 @@ def main():
     script_manager.files_list.setCurrentRow(files.index("save_project.py"))
     QTest.qWait(500)
     app.processEvents()
-    onBackground(script_manager, pad=0).save((DOCS / "script_manager.png").as_posix())
+    onBackground(script_manager, pad=0).save((DOCS / "manager.png").as_posix())
 
     packages = script_manager.openPackages()
     packages._fadeAnimation.stop()
     packages.setWindowOpacity(1)
     QTest.qWait(300)
     app.processEvents()
-    onBackground(packages, pad=0).save((DOCS / "packages.png").as_posix())
+    onBackground(packages, pad=0).save((DOCS / "packages_window.png").as_posix())
     os.chdir(ROOT)
     shutil.rmtree(work, ignore_errors=True)
     print("docs images updated")
 
 
-def saveGif(frames, path: Path):
-    """One palette for all frames: per frame palettes made Pillow's frame optimization drop buttons"""
+def saveGif(frames, path: Path, hold_ms: int = 900):
+    """GIF by ffmpeg: one palette for all frames and every frame stored whole (no deltas, no transparency),
+    so any viewer shows the same thing. Pillow's delta frames made buttons vanish in some viewers."""
+    frames = frames + [frames[-1]] * (hold_ms // FRAME_MS)  # hold the last frame
     with tempfile.TemporaryDirectory() as folder:
-        images = []
         for index, frame in enumerate(frames):
-            png = Path(folder, f"{index:03d}.png")
-            frame.save(png.as_posix())
-            image = Image.open(png).convert("RGB")
-            images.append(image.resize((image.width * 3 // 4, image.height * 3 // 4), Image.LANCZOS))
-    # The palette from all frames side by side, so hover colors are in it too
-    sheet = Image.new("RGB", (images[0].width, images[0].height * len(images)))
-    for index, image in enumerate(images):
-        sheet.paste(image, (0, image.height * index))
-    palette = sheet.quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-    paletted = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
-    durations = [FRAME_MS] * len(paletted)
-    durations[-1] = 900
-    paletted[0].save(path, save_all=True, append_images=paletted[1:], duration=durations, loop=0, optimize=False,
-                     disposal=1)
+            frame.save(Path(folder, f"{index:03d}.png").as_posix())
+        filters = ("scale=iw*3/4:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=full[p];"
+                   "[b][p]paletteuse=dither=none")
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(1000 // FRAME_MS),
+                        "-i", Path(folder, "%03d.png").as_posix(), "-vf", filters,
+                        "-gifflags", "-offsetting-transdiff", "-loop", "0", path.as_posix()], check=True)
 
 
 if __name__ == "__main__":

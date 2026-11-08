@@ -7,8 +7,8 @@ HotBox is an orchestrator: it doesn't do anything by itself, it finds the script
 what you are doing and runs them.
 
 <p align="center">
-  <img src="docs/hotbox.png" width="49%" alt="HotBox with one camera selected">
-  <img src="docs/hotbox_animation.gif" width="49%" alt="Hover wave and zoom">
+  <img src="docs/menu.png" width="49%" alt="HotBox with one camera selected">
+  <img src="docs/hover.gif" width="49%" alt="Hover wave and zoom">
 </p>
 
 ## What it shows
@@ -66,7 +66,7 @@ It takes the label, colors, icon and group of the target (its own header overrid
 inherited, choose it per context. A broken reference (file renamed, loop) shows a red button with the reason
 in the tooltip; the tests check every `#ref` in `lib/`.
 
-![Script Manager](docs/script_manager.png)
+![Script Manager](docs/manager.png)
 
 Or edit them in the **Script Manager** (bottom right button, the DinoWrite look, with a live animated preview of
 the button): it writes the header back into the script and warns
@@ -93,7 +93,7 @@ The gear in the Script Manager title bar lists all packages with a switch each. 
 buttons (and its `#ref`s) from the hotbox; scripts without `#package` are always shown. Several packages:
 `#package:studio-name, other-studio` (shown when any of them is on).
 
-<img src="docs/packages.png" width="380" alt="Packages">
+<img src="docs/packages_window.png" width="380" alt="Packages">
 
 New packages are **off** by default, so a copied HotBox doesn't show someone else's studio buttons. The choice is
 saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json` (not in the tool folder). A studio can turn
@@ -159,7 +159,7 @@ PySide6 for offscreen GUI tests, `hou` is stubbed). The repo folder must be name
 uv sync
 uv run pytest
 uv run ruff check __init__.py main.py common utils tests
-uv run --with pillow python docs/make_images.py   # README images
+uv run python docs/make_images.py   # README images (needs ffmpeg)
 ```
 
 ## Credits
