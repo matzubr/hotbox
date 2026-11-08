@@ -1,4 +1,5 @@
 #label:Camera Export
+#package:blackpoint
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:e

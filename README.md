@@ -77,6 +77,31 @@ All keys are optional (the label defaults to the file name). `#icon` is a file i
 Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `SOP_null`, `OBJ_camera`, `LOP_fetch`...).
 The script runs as `__main__`, `sys.exit()` just stops it, errors are printed to the console and shown in the status bar.
 
+### Packages: studio specific scripts
+
+Scripts that only make sense at one studio go into a package:
+
+```python
+#label:Camera Import
+#package:blackpoint
+```
+
+The gear in the Script Manager title bar lists all packages with a switch each. A turned off package hides its
+buttons (and its `#ref`s) from the hotbox; scripts without `#package` are always shown. Several packages:
+`#package:blackpoint, trehmer` (shown when any of them is on).
+
+<img src="docs/packages.png" width="380" alt="Packages">
+
+New packages are **off** by default, so a copied HotBox doesn't show someone else's studio buttons. The choice is
+saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json` (not in the tool folder). A studio can turn
+packages on for everyone in `houdini.env`; the user's own switch still wins:
+
+```
+HOTBOX_PACKAGES = "blackpoint"
+```
+
+Shipped packages: `blackpoint` (Camera Import/Export, Last Alembic Track), `trehmer` (Save HIP).
+
 ### Shared helpers: `common/`
 
 Small pieces several scripts need, split by topic (whole tools stay scripts in `lib/`):

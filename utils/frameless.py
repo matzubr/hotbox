@@ -51,7 +51,7 @@ class RoundedWindow:
 class TitleBar(QWidget):
     """Dino icon, title (drag the window by it) and close button"""
 
-    def __init__(self, window: QWidget, title: str, icon: str = "app_dino_dance.svg", on_close=None):
+    def __init__(self, window: QWidget, title: str, icon: str = "app_dino_dance.svg", on_close=None, on_settings=None):
         super().__init__()
         self.window_ = window
 
@@ -66,6 +66,13 @@ class TitleBar(QWidget):
         self.title.setStyleSheet(f"background-color:{COLORS['grey']}; border-radius:10px; color:{COLORS['white']};")
         self.title.setCursor(Qt.OpenHandCursor)
 
+        items = [dino, self.title]
+        if on_settings is not None:
+            self.settings_button = self._roundButton("gear.svg", COLORS["grey"], COLORS["orange"], icon_size=14)
+            self.settings_button.setToolTip("Packages")
+            self.settings_button.clicked.connect(on_settings)
+            items.append(self.settings_button)
+
         self.close_button = QPushButton()
         self.close_button.setFixedSize(TITLE_BUTTON_SIZE, TITLE_BUTTON_SIZE)
         self.close_button.setIcon(QIcon(QPixmap((ICONS_DIR / "close.svg").as_posix())))
@@ -79,11 +86,25 @@ class TitleBar(QWidget):
         )
         self.close_button.clicked.connect(on_close or window.close)
 
-        layout = HLayout([dino, self.title, self.close_button], align=None)
+        items.append(self.close_button)
+        layout = HLayout(items, align=None)
         layout.setContentsMargins(15, 10, 15, 4)
         layout.setStretch(1, 1)
         self.setLayout(layout)
         self._drag_offset = None
+
+    @staticmethod
+    def _roundButton(icon: str, color: str, hover: str, icon_size: int = 12) -> QPushButton:
+        button = QPushButton()
+        button.setFixedSize(TITLE_BUTTON_SIZE, TITLE_BUTTON_SIZE)
+        button.setIcon(QIcon(QPixmap((ICONS_DIR / icon).as_posix())))
+        button.setIconSize(QSize(icon_size, icon_size))
+        button.setCursor(Qt.PointingHandCursor)
+        button.setStyleSheet(
+            f"QPushButton {{background-color:{color}; border:none; border-radius:{TITLE_BUTTON_SIZE // 2}px;}}"
+            f"QPushButton:hover {{background-color:{hover};}}"
+        )
+        return button
 
     def mousePressEvent(self, event):
         self._drag_offset = self.mapToGlobal(event.pos()) - self.window_.pos()

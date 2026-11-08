@@ -1,4 +1,5 @@
 #label:Last Alembic Track
+#package:blackpoint
 #textcolor:#a0ceff
 #icon:SOP_alembic
 

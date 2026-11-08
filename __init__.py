@@ -21,11 +21,13 @@ _loaded_at = time.time()
 _SUBMODULES = (
     "utils.qt",
     "utils.scripts",
+    "utils.settings",
     "utils.runner",
     "utils.utility",
     "utils.theme",
     "utils.widgets",
     "utils.frameless",
+    "utils.packages",
     "utils.manager",
     "common.panes",
     "common.nodes",

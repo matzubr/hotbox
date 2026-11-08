@@ -13,7 +13,7 @@ from pathlib import Path
 
 import hou
 
-from .utils import manager, runner, scripts, utility, widgets
+from .utils import manager, runner, scripts, settings, utility, widgets
 from .utils.qt import (
     QCursor,
     QDesktopServices,
@@ -73,7 +73,8 @@ class HotBox(QWidget):
         return self.context.mode
 
     def initUI(self):
-        library = scripts.scanScripts(self.lib_dir / self.mode)
+        # Scripts of turned off packages are not shown (Script Manager -> gear)
+        library = scripts.availableScripts(scripts.scanScripts(self.lib_dir / self.mode), settings.enabledChecker())
         self.scripts_buttons = widgets.ScriptGrid(library, context=self.context.context, parent=self)
         self.keybindings = self.scripts_buttons.keybindings()
 

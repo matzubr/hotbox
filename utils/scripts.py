@@ -11,6 +11,11 @@ A script describes its button in the first comment lines:
 
 Buttons with the same #group stand together in one block with a caption.
 
+    #package:blackpoint
+
+makes the script part of a package (several: comma separated): it is shown only while the package is
+turned on (Script Manager -> gear, see settings.py). Scripts without a package are always shown.
+
 The same tool in another mode/context: a file with only a header and a reference
 
     #ref:single/create_null.py
@@ -32,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MODES = ("all", "multiple", "single")
-SETTINGS = ("ref", "label", "group", "textcolor", "buttoncolor", "icon", "link", "hotkey")
+SETTINGS = ("ref", "label", "group", "package", "textcolor", "buttoncolor", "icon", "link", "hotkey")
 NOT_INHERITED = ("ref", "hotkey")
 MAX_REF_DEPTH = 8
 DEFAULTS = {"textcolor": "#e8e8e8", "buttoncolor": "#222222"}
@@ -67,6 +72,15 @@ class Script:
     @property
     def group(self) -> str:
         return self.settings.get("group") or ""
+
+    @property
+    def packages(self) -> list[str]:
+        return [name.strip() for name in (self.settings.get("package") or "").split(",") if name.strip()]
+
+    def isAvailable(self, isEnabled) -> bool:
+        """Shown in the hotbox: no package, or one of its packages is on"""
+        packages = self.packages
+        return not packages or any(isEnabled(name) for name in packages)
 
     @property
     def context(self) -> str:
@@ -190,6 +204,23 @@ def groupBlocks(scripts: list[Script]) -> list[tuple[str, list[Script]]]:
         else:
             blocks.append((name, sorted(members, key=lambda s: s.label.casefold())))
     return sorted(blocks, key=lambda block: (block[0] or block[1][0].label).casefold())
+
+
+def availableScripts(scripts: list[Script], isEnabled) -> list[Script]:
+    """Scripts of the turned on packages (and the ones without a package)"""
+    return [script for script in scripts if script.isAvailable(isEnabled)]
+
+
+def allPackages(lib_root: Path) -> dict[str, list[str]]:
+    """{package: ["mode/relpath", ...]} over all modes of lib/; names as written in the first script"""
+    packages: dict[str, list[str]] = {}
+    names: dict[str, str] = {}
+    for mode in MODES:
+        for script in scanScripts(Path(lib_root) / mode):
+            for name in script.packages:
+                key = names.setdefault(name.casefold(), name)
+                packages.setdefault(key, []).append(f"{mode}/{script.relpath}")
+    return dict(sorted(packages.items(), key=lambda item: item[0].casefold()))
 
 
 def scriptsForContext(scripts: list[Script], context: str) -> tuple[list[Script], list[Script]]:

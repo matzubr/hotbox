@@ -28,11 +28,21 @@ def _make_hou():
     hou.undos = types.SimpleNamespace(group=lambda label: contextlib.nullcontext())
     hou.severityType = types.SimpleNamespace(Error="Error", Warning="Warning", Message="Message")
     hou.ui = MagicMock(name="hou.ui")
+    hou.getenv = lambda name, default=None: default
     hou.__getattr__ = lambda name: MagicMock(name=f"hou.{name}")
     return hou
 
 
 sys.modules["hou"] = _make_hou()
+
+
+@pytest.fixture(autouse=True)
+def user_settings(tmp_path, monkeypatch):
+    """Package on/off settings in a temp file, never the real Houdini prefs"""
+    path = tmp_path / "hotbox_settings.json"
+    monkeypatch.setenv("HOTBOX_SETTINGS", path.as_posix())
+    monkeypatch.delenv("HOTBOX_PACKAGES", raising=False)
+    return path
 
 
 @pytest.fixture

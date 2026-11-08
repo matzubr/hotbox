@@ -13,6 +13,10 @@ from pathlib import Path
 
 from PIL import Image
 
+# Package settings in a temp file: the user's own choice doesn't change the images
+os.environ["HOTBOX_SETTINGS"] = Path(tempfile.mkdtemp(), "hotbox", "settings.json").as_posix()
+os.environ.pop("HOTBOX_PACKAGES", None)
+
 DOCS = Path(__file__).resolve().parent
 ROOT = DOCS.parent
 sys.path.insert(0, (ROOT / "tests").as_posix())
@@ -90,6 +94,9 @@ def main():
     box.close()
     saveGif(frames, DOCS / "hotbox_animation.gif")
 
+    from hotbox.utils import settings
+
+    settings.setPackageEnabled("trehmer", True)  # Save HIP is shown in the manager
     os.chdir(ROOT)  # relative lib path: no personal absolute paths in the File field of a public image
     script_manager = manager.ScriptManager(lib_folder=Path("lib"))
     script_manager._fadeAnimation.stop()
@@ -101,6 +108,13 @@ def main():
     QTest.qWait(500)
     app.processEvents()
     onBackground(script_manager, pad=0).save((DOCS / "script_manager.png").as_posix())
+
+    packages = script_manager.openPackages()
+    packages._fadeAnimation.stop()
+    packages.setWindowOpacity(1)
+    QTest.qWait(300)
+    app.processEvents()
+    onBackground(packages, pad=0).save((DOCS / "packages.png").as_posix())
     print("docs images updated")
 
 

@@ -10,7 +10,9 @@ from pathlib import Path
 import hou
 
 from . import scripts as script_lib
+from . import settings
 from .frameless import RoundedWindow, TitleBar
+from .packages import PackagesWindow
 from .qt import (
     QColor,
     QComboBox,
@@ -108,9 +110,13 @@ class ScriptManager(RoundedWindow, QWidget):
         self.mode_combobox.addItems(list(script_lib.MODES))
         self.folders_list = QListWidget()
         self.files_list = QListWidget()
+        for widget in (self.folders_list, self.files_list):
+            widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            widget.setTextElideMode(Qt.ElideMiddle)
 
         self.name_lineedit = QLineEdit()
         self.group_lineedit = QLineEdit()
+        self.package_lineedit = QLineEdit()
         self.button_color_swatch = hou.qt.ColorSwatchButton()
         self.text_color_swatch = hou.qt.ColorSwatchButton()
         self.icon_lineedit = QLineEdit()
@@ -136,6 +142,7 @@ class ScriptManager(RoundedWindow, QWidget):
         rows = [
             ("Name", self.name_lineedit),
             ("Group", self.group_lineedit),
+            ("Package", self.package_lineedit),
             ("Button color", self.button_color_swatch),
             ("Text color", self.text_color_swatch),
             ("Icon", self.icon_lineedit),
@@ -172,13 +179,14 @@ class ScriptManager(RoundedWindow, QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(TitleBar(self, "Script Manager"))
+        layout.addWidget(TitleBar(self, "Script Manager", on_settings=self.openPackages))
         layout.addWidget(body)
 
         self.mode_combobox.currentIndexChanged.connect(self.updateScripts)
         self.folders_list.currentRowChanged.connect(self.updateFilesList)
         self.files_list.currentRowChanged.connect(self.updateInfo)
-        for lineedit in (self.name_lineedit, self.group_lineedit, self.icon_lineedit, self.hotkey_lineedit):
+        for lineedit in (self.name_lineedit, self.group_lineedit, self.package_lineedit, self.icon_lineedit,
+                         self.hotkey_lineedit):
             lineedit.textChanged.connect(self.onEdited)
         for swatch in (self.button_color_swatch, self.text_color_swatch):
             signal = getattr(swatch, "colorChanged", None)
@@ -220,18 +228,27 @@ class ScriptManager(RoundedWindow, QWidget):
             self.updateFilesList()
 
     def updateFilesList(self):
+        row = self.files_list.currentRow()
         self.files_list.clear()
         scripts = self.folderScripts()
+        isEnabled = settings.enabledChecker()
         for script in scripts:
-            self.files_list.addItem(script.path.name)
+            available = script.isAvailable(isEnabled)
+            self.files_list.addItem(script.path.name if available else f"{script.path.name}  — off")
             item = self.files_list.item(self.files_list.count() - 1)
+            if not available:
+                item.setForeground(QColor("#6f6f6f"))
             icon = resolveIcon(script.icon)
             if icon is not None:
                 item.setIcon(icon)
+            tooltip = []
             if script.ref:
-                item.setToolTip(f"#ref → {script.ref}")
+                tooltip.append(f"#ref → {script.ref}")
+            if script.packages:
+                tooltip.append(f"package: {', '.join(script.packages)}" + ("" if available else " (turned off)"))
+            item.setToolTip("\n".join(tooltip))
         if scripts:
-            self.files_list.setCurrentRow(0)
+            self.files_list.setCurrentRow(row if 0 <= row < len(scripts) else 0)
         else:
             self.updateInfo()
 
@@ -249,11 +266,13 @@ class ScriptManager(RoundedWindow, QWidget):
         merged = script.settings if script else {}
         self._loading = True
         for lineedit, key in ((self.name_lineedit, "label"), (self.group_lineedit, "group"),
+                              (self.package_lineedit, "package"),
                               (self.icon_lineedit, "icon"), (self.hotkey_lineedit, "hotkey")):
             lineedit.setText(own.get(key, ""))
         self.name_lineedit.setPlaceholderText(script.label if script else "")
         self.group_lineedit.setPlaceholderText(merged.get("group", "") or "buttons of one group stand together")
         self.icon_lineedit.setPlaceholderText(merged.get("icon", "") or "dino.svg / SOP_null")
+        self.package_lineedit.setPlaceholderText(merged.get("package", "") or "shown only when the package is on")
         self.file_lineedit.setText(script.path.as_posix() if script else "")
         if script and script.ref:
             self.ref_label.setText(f"#ref → {script.ref}" + (f"  ({script.error})" if script.error else ""))
@@ -296,7 +315,8 @@ class ScriptManager(RoundedWindow, QWidget):
         hotkey = self.hotkey_lineedit.text().strip()
         if hotkey and keyCode(hotkey) is None:
             messages.append(f"'{hotkey}' is not a key")
-        conflicts = script_lib.hotkeyConflicts(self.scripts, script, hotkey)
+        shown = script_lib.availableScripts(self.scripts, settings.enabledChecker())
+        conflicts = script_lib.hotkeyConflicts(shown, script, hotkey)
         if conflicts:
             messages.append(f"Hotkey '{hotkey}' is also used by: {', '.join(conflicts)}")
         icon = self.icon_lineedit.text().strip()
@@ -318,6 +338,7 @@ class ScriptManager(RoundedWindow, QWidget):
         edited = {
             "label": self.name_lineedit.text().strip(),
             "group": self.group_lineedit.text().strip(),
+            "package": self.package_lineedit.text().strip(),
             "buttoncolor": self.button_color_swatch.color().name(),
             "textcolor": self.text_color_swatch.color().name(),
             "icon": self.icon_lineedit.text().strip(),
@@ -341,6 +362,15 @@ class ScriptManager(RoundedWindow, QWidget):
         self.updateFilesList()
         self.files_list.setCurrentRow(file_row)
         self.updateInfo()
+
+    def openPackages(self):
+        """Gear: turn packages on/off; the list greys out scripts of turned off packages"""
+        self.packages_window = PackagesWindow(self.lib, parent=self)
+        self.packages_window.changed.connect(self.updateFilesList)
+        top_right = self.mapToGlobal(self.rect().topRight())  # under the gear, inside the manager
+        self.packages_window.move(top_right.x() - self.packages_window.width() - 20, top_right.y() + 50)
+        self.packages_window.show()
+        return self.packages_window
 
     def openFile(self):
         script = self.currentScript()

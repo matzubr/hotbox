@@ -1,4 +1,5 @@
 #label:Camera Import
+#package:blackpoint
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:w

@@ -1,4 +1,5 @@
 #label:Save HIP
+#package:trehmer
 #textcolor:#6efb09
 #icon:save.svg
 
