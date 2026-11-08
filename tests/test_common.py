@@ -73,14 +73,17 @@ def test_paste_merge_nodes_from_clipboard(hou, monkeypatch):
     created[0].setUserData.assert_not_called()  # plain paste: default look
 
 
-@pytest.mark.parametrize("script", ["object_merge_relative.py", "object_merge_absolute.py"])
-def test_object_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, script):
+@pytest.mark.parametrize(("category", "script"), [
+    ("Sop", "object_merge_relative.py"), ("Sop", "object_merge_absolute.py"),
+    ("Lop", "fetch_relative.py"), ("Lop", "fetch_absolute.py"),
+])
+def test_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, category, script):
     from conftest import ROOT
     from hotbox.common import panes
     from hotbox.utils import runner
 
     network = MagicMock()
-    network.childTypeCategory().name.return_value = "Sop"
+    network.childTypeCategory().name.return_value = category
     pane = MagicMock()
     pane.pwd.return_value = network
     monkeypatch.setattr(panes, "networkPane", lambda: pane)
@@ -90,7 +93,7 @@ def test_object_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, s
     created = []
     network.createNode.side_effect = lambda *args: created.append(MagicMock()) or created[-1]
 
-    assert runner.runScript(ROOT / "lib" / "all" / "Sop" / script)
+    assert runner.runScript(ROOT / "lib" / "all" / category / script)
 
     assert len(created) == 2
     for node, source in zip(created, sources.values()):

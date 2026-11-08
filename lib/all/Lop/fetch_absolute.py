@@ -7,4 +7,4 @@
 
 from hotbox.common import nodes
 
-nodes.pasteMergeNodes("Lop", "fetch", "loppath", relative=False)
+nodes.pasteMergeNodes("Lop", "fetch", "loppath", relative=False, shape="chevron_up", copy_color=True)
