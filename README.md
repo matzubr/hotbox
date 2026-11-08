@@ -1,6 +1,8 @@
 # HotBox
 
 A popup under the mouse with buttons for your own Python scripts in Houdini 21+.
+Inspired by [W_hotbox](https://github.com/melMass/W_hotbox) for Nuke (the idea of the hotbox and the Script Manager),
+written from scratch for Houdini.
 HotBox is an orchestrator: it doesn't do anything by itself, it finds the scripts in `lib/`, shows the ones that fit
 what you are doing and runs them.
 
@@ -16,10 +18,14 @@ what you are doing and runs them.
 
 Deeper folders (`lib/all/Lop/Instances/`) are not shown.
 
+In each column single buttons and `#group` blocks are stacked from the top, sorted by group name / label
+(not by file names). A group shows its buttons two per row under a caption; a group with one button is a plain button.
+
 Bottom row: open the HotBox folder · current context (click to close) · Script Manager.
 `Esc` or `` ` `` closes the hotbox. Clicking a button or pressing its hotkey closes the hotbox and runs the script.
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
-Everything a script does is one undo step.
+Everything a script does is one undo step. Buttons light up on hover and press; a hotkey flashes its button
+before the script runs.
 
 ## Adding a script
 
@@ -31,24 +37,49 @@ Drop a `.py` file into the right folder. Its button is described by the first co
 #buttoncolor:#22253b
 #icon:app_dino_dance.svg
 #hotkey:n
+#group:Nodes
 
 import hou
 ...
 ```
 
+Write scripts for any number of selected nodes (`for node in hou.selectedNodes()`): then one script serves
+`lib/single/` and `lib/multiple/`.
+
+### The same tool in another mode: `#ref`
+
+A file with only a header runs another script from `lib/`:
+
+```python
+#ref:single/create_null.py
+#hotkey:n
+```
+
+It takes the label, colors, icon and group of the target (its own header overrides them); the hotkey is not
+inherited, choose it per context. A broken reference (file renamed, loop) shows a red button with the reason
+in the tooltip; the tests check every `#ref` in `lib/`.
+
 Or edit them in the **Script Manager** (bottom right button): it writes the header back into the script and warns
-about hotkeys already used by scripts shown together with it and about missing icons.
+about hotkeys already used by scripts shown together with it and about missing icons. For a `#ref` it edits only
+the reference's own header (inherited values are shown greyed out).
 
 All keys are optional (the label defaults to the file name, icons are looked up in `icons/`).
 The script runs as `__main__`, `sys.exit()` just stops it, errors are printed to the console and shown in the status bar.
 
-Code shared by several scripts lives in `lib_common.py` (e.g. the same tools in `lib/single/` and `lib/multiple/`):
+### Shared helpers: `common/`
+
+Small pieces several scripts need, split by topic (whole tools stay scripts in `lib/`):
+
+| Module | |
+|---|---|
+| `common/panes.py` | Network Editor / Scene Viewer under the cursor, status bar warnings |
+| `common/nodes.py` | node paths from the clipboard, Object Merge / Fetch at the cursor, attrib VOP/wrangle under the selection |
+| `common/paths.py` | file parameters of a node, `$JOB`/`$FILM` path conversion |
 
 ```python
-#label:Create Null
-from hotbox import lib_common
+from hotbox.common import paths
 
-lib_common.createNull()
+paths.convertPaths("$JOB")
 ```
 
 Headers are read from the files every time the hotbox opens: nothing is cached, nothing is written into the tool folder.
@@ -87,7 +118,7 @@ PySide6 for offscreen GUI tests, `hou` is stubbed). The repo folder must be name
 ```bash
 uv sync
 uv run pytest
-uv run ruff check __init__.py main.py utils tests
+uv run ruff check __init__.py main.py common utils tests
 ```
 
 ## Credits

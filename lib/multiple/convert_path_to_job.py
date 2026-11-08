@@ -1,6 +1,1 @@
-#label:Convert to $JOB
-#textcolor:#a0ceff
-
-from hotbox import lib_common
-
-lib_common.convertPaths("$JOB")
+#ref:single/convert_path_to_job.py

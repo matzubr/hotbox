@@ -26,7 +26,7 @@ def _make_hou():
     hou = types.ModuleType("hou")
     hou.OperationFailed = OperationFailed
     hou.undos = types.SimpleNamespace(group=lambda label: contextlib.nullcontext())
-    hou.severityType = types.SimpleNamespace(Error="Error", Message="Message")
+    hou.severityType = types.SimpleNamespace(Error="Error", Warning="Warning", Message="Message")
     hou.ui = MagicMock(name="hou.ui")
     hou.__getattr__ = lambda name: MagicMock(name=f"hou.{name}")
     return hou

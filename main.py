@@ -13,7 +13,19 @@ from pathlib import Path
 import hou
 
 from .utils import runner, scripts, utility, widgets
-from .utils.qt import QCursor, QDesktopServices, QGuiApplication, QPoint, Qt, QUrl, QVBoxLayout, QWidget
+from .utils.qt import (
+    QCursor,
+    QDesktopServices,
+    QEasingCurve,
+    QGuiApplication,
+    QPoint,
+    QPropertyAnimation,
+    Qt,
+    QTimer,
+    QUrl,
+    QVBoxLayout,
+    QWidget,
+)
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 LIB_DIR = PACKAGE_DIR / "lib"
@@ -24,6 +36,9 @@ def start():
 
 
 class HotBox(QWidget):
+    FADE_IN = 120  # ms
+    HOTKEY_FEEDBACK = 90  # ms the pressed button is visible before the script runs
+
     def __init__(self, lib_dir: Path = LIB_DIR):
         super().__init__(hou.qt.mainWindow())
         self.lib_dir = Path(lib_dir)
@@ -35,7 +50,18 @@ class HotBox(QWidget):
         self.initUI()
         self.adjustSize()
         self.setPositionFromMouse()
+        self._triggered = False
+        self.fadeIn()
         self.show()
+
+    def fadeIn(self):
+        self.setWindowOpacity(0.0)
+        self._fade = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade.setDuration(self.FADE_IN)
+        self._fade.setStartValue(0.0)
+        self._fade.setEndValue(1.0)
+        self._fade.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade.start()
 
     @property
     def mode(self) -> str:
@@ -66,7 +92,10 @@ class HotBox(QWidget):
     def runScript(self, script):
         # Close first: scripts open dialogs, select nodes in the viewport, etc.
         self.close()
-        runner.runScript(script.path, label=script.label)
+        if script.runPath is None:
+            runner.status(f"HotBox: {script.relpath}: {script.error}", error=True)
+            return
+        runner.runScript(script.runPath, label=script.label)
 
     def keyPressEvent(self, event):
         codes = widgets.eventKeyCodes(event)
@@ -75,7 +104,10 @@ class HotBox(QWidget):
             return
         button = next((self.keybindings[code] for code in codes if code in self.keybindings), None)
         if button is not None and not event.isAutoRepeat():
-            button.click()
+            if not self._triggered:  # one script per hotbox
+                self._triggered = True
+                button.flash()
+                QTimer.singleShot(self.HOTKEY_FEEDBACK, button.click)
             return
         super().keyPressEvent(event)
 

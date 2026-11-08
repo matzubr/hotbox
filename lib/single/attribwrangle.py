@@ -1,7 +1,8 @@
 #label:Create Wrangle
+#group:Attrib
 #textcolor:#ffa700
 #hotkey:w
 
-from hotbox import lib_common
+from hotbox.common import nodes
 
-lib_common.createAttribNode("attribwrangle", (0.95, 0.8, 0.25))
+nodes.createAttribNode("attribwrangle", (0.95, 0.8, 0.25))

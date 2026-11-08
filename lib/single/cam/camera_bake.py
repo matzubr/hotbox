@@ -1,4 +1,5 @@
 #label:Camera Bake Chop
+#group:Bake
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:1

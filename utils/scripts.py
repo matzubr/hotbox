@@ -7,6 +7,17 @@ A script describes its button in the first comment lines:
     #buttoncolor:#22253b
     #icon:app_dino_dance.svg
     #hotkey:n
+    #group:Nodes
+
+Buttons with the same #group stand together in one block with a caption.
+
+The same tool in another mode/context: a file with only a header and a reference
+
+    #ref:single/create_null.py
+    #hotkey:n
+
+runs the referenced script (path inside lib/). The reference takes the label, colors, icon and group of the
+target, its own header overrides them. The hotkey is not inherited: hotkeys are chosen per context.
 
 Nothing is cached on disk: headers are read every time the hotbox opens (a few dozen small files),
 so the tool folder can be copied between users and machines as is. The old schema.json cache kept
@@ -21,7 +32,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MODES = ("all", "multiple", "single")
-SETTINGS = ("label", "textcolor", "buttoncolor", "icon", "link", "hotkey")
+SETTINGS = ("ref", "label", "group", "textcolor", "buttoncolor", "icon", "link", "hotkey")
+NOT_INHERITED = ("ref", "hotkey")
+MAX_REF_DEPTH = 8
 DEFAULTS = {"textcolor": "#e8e8e8", "buttoncolor": "#222222"}
 
 _HEADER_LINE = re.compile(r"^#\s*(\w+)\s*:(.*)$")
@@ -31,7 +44,29 @@ _HEADER_LINE = re.compile(r"^#\s*(\w+)\s*:(.*)$")
 class Script:
     path: Path  # absolute path, resolved from the lib folder at scan time
     relpath: str  # posix path inside lib/<mode>, e.g. "Sop/object_merge_relative.py"
-    settings: dict = field(default_factory=dict, compare=False)
+    settings: dict = field(default_factory=dict, compare=False)  # own header merged over the referenced ones
+    own: dict | None = field(default=None, compare=False)  # header of this file only (None: same as settings)
+    target: Path | None = field(default=None, compare=False)  # file to run (the ref target or the script itself)
+    error: str | None = field(default=None, compare=False)  # broken reference
+
+    @property
+    def ownSettings(self) -> dict:
+        return self.settings if self.own is None else self.own
+
+    @property
+    def ref(self) -> str | None:
+        return self.ownSettings.get("ref")
+
+    @property
+    def runPath(self) -> Path | None:
+        """Script to execute; None for a broken reference"""
+        if self.error:
+            return None
+        return self.target or self.path
+
+    @property
+    def group(self) -> str:
+        return self.settings.get("group") or ""
 
     @property
     def context(self) -> str:
@@ -88,12 +123,73 @@ def scanScripts(folder: Path, suffixes=(".py",)) -> list[Script]:
             continue
         relpath = path.relative_to(folder).as_posix()
         try:
-            settings = readHeader(path)
+            own = readHeader(path)
         except OSError as e:
             print(f"HotBox: can't read {path.as_posix()}: {e}")
             continue
-        scripts.append(Script(path=path, relpath=relpath, settings=settings))
+        if "ref" not in own:
+            scripts.append(Script(path=path, relpath=relpath, settings=own))
+            continue
+        target, settings, error = resolveRef(path, own, folder.parent)
+        if error:
+            print(f"HotBox: {relpath}: {error}")
+        scripts.append(Script(path=path, relpath=relpath, settings=settings, own=own, target=target, error=error))
     return scripts
+
+
+def resolveRef(path: Path, own: dict, lib_root: Path) -> tuple[Path | None, dict, str | None]:
+    """Follow #ref (also chains) from a script. Returns (target file, merged settings, error)."""
+    lib_root = Path(lib_root).resolve()
+    seen = {Path(path).resolve()}
+    chain = [own]
+    current = own
+    target = None
+    while "ref" in current:
+        ref = current["ref"].replace("\\", "/").lstrip("/")
+        candidate = (lib_root / ref).resolve()
+        if lib_root not in candidate.parents:
+            return None, _merge([own]), f"#ref:{current['ref']} points outside lib/"
+        if candidate in seen:
+            return None, _merge([own]), f"#ref:{current['ref']} makes a loop"
+        if not candidate.is_file():
+            return None, _merge([own]), f"#ref:{current['ref']} not found (lib/{ref})"
+        if len(seen) > MAX_REF_DEPTH:
+            return None, _merge([own]), "#ref chain is too long"
+        seen.add(candidate)
+        target = candidate
+        current = readHeader(candidate)
+        chain.append(current)
+    return target, _merge(chain), None
+
+
+def _merge(chain: list[dict]) -> dict:
+    """chain[0] is the script's own header, the rest are the referenced ones (nearest first)"""
+    merged = {}
+    for settings in reversed(chain[1:]):
+        merged.update({k: v for k, v in settings.items() if k not in NOT_INHERITED})
+    merged.update(chain[0])
+    return merged
+
+
+def groupBlocks(scripts: list[Script]) -> list[tuple[str, list[Script]]]:
+    """Blocks of buttons in a column: (group name, scripts) for each #group, ('', [script]) for ungrouped ones.
+
+    Blocks are sorted by group name / label, scripts in a group by label: the order doesn't depend on file names.
+    A group with one script is shown as a plain button.
+    """
+    groups: dict[str, list[Script]] = {}
+    blocks: list[tuple[str, list[Script]]] = []
+    for script in scripts:
+        if script.group:
+            groups.setdefault(script.group, []).append(script)
+        else:
+            blocks.append(("", [script]))
+    for name, members in groups.items():
+        if len(members) == 1:  # a group of one is just a button
+            blocks.append(("", members))
+        else:
+            blocks.append((name, sorted(members, key=lambda s: s.label.casefold())))
+    return sorted(blocks, key=lambda block: (block[0] or block[1][0].label).casefold())
 
 
 def scriptsForContext(scripts: list[Script], context: str) -> tuple[list[Script], list[Script]]:

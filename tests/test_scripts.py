@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from conftest import ROOT, write_script
 from hotbox.utils import scripts
 
@@ -66,6 +67,7 @@ def test_shipped_library_has_headers_and_compiles():
     for mode in scripts.MODES:
         for script in scripts.scanScripts(ROOT / "lib" / mode):
             compile(script.path.read_text(encoding="utf-8"), script.path.as_posix(), "exec")
+            assert script.error is None, f"{mode}/{script.relpath}: {script.error}"
             assert "label" in script.settings, script.relpath
 
 
@@ -107,3 +109,42 @@ def test_russian_layout_maps_to_the_same_physical_key():
     assert scripts.latinKey("Ц") == "w"
     assert scripts.latinKey("ё") == "`"
     assert scripts.latinKey("f") is None and scripts.latinKey("") is None
+
+
+def test_ref_inherits_target_header_except_hotkey(tmp_path):
+    write_script(tmp_path, "single/cam/bake.py", "#label:Bake\n#group:Camera\n#hotkey:b\n#textcolor:#fff\n")
+    stub = write_script(tmp_path, "multiple/bake.py", "#ref:/single/cam/bake.py\n#textcolor:#000\n", body="")
+
+    (script,) = scripts.scanScripts(tmp_path / "multiple")
+
+    assert script.path == stub and script.runPath == tmp_path / "single" / "cam" / "bake.py"
+    assert script.settings == {"label": "Bake", "group": "Camera", "textcolor": "#000", "ref": "/single/cam/bake.py"}
+    assert script.hotkey is None and script.ownSettings == {"ref": "/single/cam/bake.py", "textcolor": "#000"}
+
+
+def test_ref_chain(tmp_path):
+    write_script(tmp_path, "single/a.py", "#label:A\n")
+    write_script(tmp_path, "multiple/b.py", "#ref:single/a.py\n#group:G\n", body="")
+    write_script(tmp_path, "all/c.py", "#ref:multiple/b.py\n", body="")
+    (script,) = scripts.scanScripts(tmp_path / "all")
+    assert script.runPath == tmp_path / "single" / "a.py" and script.label == "A" and script.group == "G"
+
+
+@pytest.mark.parametrize(("ref", "error"), [
+    ("single/missing.py", "not found"),
+    ("../../etc/passwd", "outside lib"),
+    ("all/loop.py", "loop"),
+])
+def test_broken_refs(tmp_path, ref, error):
+    write_script(tmp_path, "all/loop.py", f"#ref:{ref}\n#label:Loop\n", body="")
+    (script,) = scripts.scanScripts(tmp_path / "all")
+    assert error in script.error and script.runPath is None and script.label == "Loop"
+
+
+def test_group_blocks_sorted_by_name():
+    make = lambda rel, label, group="": scripts.Script(Path(rel), rel, {"label": label, "group": group})
+    library = [make("z.py", "Zeta", "Merge"), make("a.py", "Alpha", "Merge"), make("n.py", "Null"), make("c.py", "Bake")]
+    blocks = scripts.groupBlocks(library)
+    assert [(name, [s.label for s in members]) for name, members in blocks] == [
+        ("", ["Bake"]), ("Merge", ["Alpha", "Zeta"]), ("", ["Null"]),
+    ]

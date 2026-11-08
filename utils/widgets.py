@@ -10,6 +10,7 @@ from .qt import (
     QColor,
     QComboBox,
     QDesktopServices,
+    QEasingCurve,
     QFont,
     QFontDatabase,
     QFrame,
@@ -25,6 +26,7 @@ from .qt import (
     QSize,
     Qt,
     QUrl,
+    QVariantAnimation,
     QVBoxLayout,
     QWidget,
 )
@@ -75,8 +77,21 @@ def eventKeyCodes(event) -> list[int]:
     return codes
 
 
+def mixColor(color: QColor, other: QColor, amount: float) -> QColor:
+    """color moved towards other by amount (0..1)"""
+    return QColor(
+        round(color.red() + (other.red() - color.red()) * amount),
+        round(color.green() + (other.green() - color.green()) * amount),
+        round(color.blue() + (other.blue() - color.blue()) * amount),
+    )
+
+
 class Button(QPushButton):
-    """Flat rounded button with a wrapped label"""
+    """Flat rounded button with a wrapped label; background animates on hover and press"""
+
+    HOVER = 0.12  # towards white
+    PRESSED = 0.28
+    DURATION = 140  # ms
 
     def __init__(
         self,
@@ -90,6 +105,10 @@ class Button(QPushButton):
         super().__init__(parent)
         loadFont()
         self.buttonWidth = buttonsize
+        self._animation = QVariantAnimation(self)
+        self._animation.setDuration(self.DURATION)
+        self._animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._animation.valueChanged.connect(self._applyBackground)
 
         if isinstance(icon, (QIcon, QPixmap)):
             self.setIcon(icon)
@@ -102,56 +121,149 @@ class Button(QPushButton):
                 print(f"HotBox: no icon {filepath.as_posix()}")
 
         self.updateText(label)
-        self.setFont(QFont(FONT_FAMILY, FONT_SIZE, QFont.Bold))
         self.updateColors(buttonColor, textColor)
         self.setFixedSize(QSize(buttonsize, int(buttonsize * 0.3)))
         self.setFlat(True)
         self.setFocusPolicy(Qt.ClickFocus)
         self.setDefault(False)
 
+    MAX_LINES = 2
+
     def updateText(self, text: str):
-        max_line_width = int(self.buttonWidth * 0.06)
-        self.setText("\n".join(wrap(text, max_line_width)) or text)
+        """Wrap to MAX_LINES lines; longer labels get a smaller font so they still fit the button"""
+        size = FONT_SIZE
+        line_width = int(self.buttonWidth * 0.06)
+        lines = wrap(text, line_width)
+        if len(lines) > self.MAX_LINES:
+            size = FONT_SIZE - 3
+            lines = wrap(text, int(line_width * FONT_SIZE / size))
+        self.setText("\n".join(lines) or text)
+        self.setFont(QFont(FONT_FAMILY, size, QFont.Bold))
 
     def updateColors(self, buttonColor="#222222", textColor="#e8e8e8"):
+        self.baseColor = QColor(buttonColor)
+        self.hoverColor = mixColor(self.baseColor, QColor("#ffffff"), self.HOVER)
+        self.pressedColor = mixColor(self.baseColor, QColor("#ffffff"), self.PRESSED)
+        self.textColor = textColor
+        self._applyBackground(self.baseColor)
+
+    def background(self) -> QColor:
+        return QColor(self._background)
+
+    def _applyBackground(self, color):
+        self._background = QColor(color)
         self.setStyleSheet(
             f"""QPushButton{{
-                background-color:{buttonColor};
-                color:{textColor};
+                background-color:{self._background.name()};
+                color:{self.textColor};
                 border-radius:10px;
-                border:none;}}
-            QPushButton::hover{{
-                background-color:#262626}}"""
+                border:none;}}"""
         )
+
+    def animateTo(self, color: QColor):
+        self._animation.stop()
+        self._animation.setStartValue(self.background())
+        self._animation.setEndValue(QColor(color))
+        self._animation.start()
+
+    def flash(self):
+        """Pressed look fading back: feedback for a hotkey"""
+        self._applyBackground(self.pressedColor)
+        self.animateTo(self.hoverColor if self.underMouse() else self.baseColor)
+
+    def enterEvent(self, event):
+        self.animateTo(self.hoverColor)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.animateTo(self.baseColor)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        self._animation.stop()
+        self._applyBackground(self.pressedColor)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.animateTo(self.hoverColor if self.underMouse() else self.baseColor)
+        super().mouseReleaseEvent(event)
 
 
 class ScriptButton(Button):
     """Button that runs a library script"""
 
+    BROKEN_TEXT = "#ff6b6b"
+
     def __init__(self, script: script_lib.Script, buttonsize: int = 200, parent=None):
         label = f"{script.label} ({script.hotkey})" if script.hotkey else script.label
-        super().__init__(label, script.buttoncolor, script.textcolor, script.icon, buttonsize, parent)
+        text_color = self.BROKEN_TEXT if script.error else script.textcolor
+        super().__init__(label, script.buttoncolor, text_color, script.icon, buttonsize, parent)
         self.script = script
         self.hotkey = script.hotkey
-        self.setToolTip(script.relpath)
+        tooltip = script.relpath
+        if script.ref:
+            tooltip += f"\n→ {script.ref}"
+        if script.error:
+            tooltip += f"\n{script.error}"
+        self.setToolTip(tooltip)
+
+
+class GroupBlock(QFrame):
+    """Buttons of one #group with a caption, GROUP_COLUMNS buttons per row"""
+
+    GROUP_COLUMNS = 2
+
+    def __init__(self, name: str, buttons: list[ScriptButton], parent=None):
+        super().__init__(parent)
+        self.setObjectName("GroupBlock")
+        self.setStyleSheet("#GroupBlock{background-color:rgba(255,255,255,10); border-radius:12px;}")
+        caption = QLabel(name, self)
+        caption.setFont(QFont(FONT_FAMILY, FONT_SIZE - 4, QFont.Bold))
+        caption.setStyleSheet("color:rgba(232,232,232,150); background:transparent;")
+
+        grid = QGridLayout()
+        grid.setSpacing(6)
+        for index, button in enumerate(buttons):
+            grid.addWidget(button, index // self.GROUP_COLUMNS, index % self.GROUP_COLUMNS)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 4, 6, 6)
+        layout.setSpacing(4)
+        layout.addWidget(caption)
+        layout.addLayout(grid)
 
 
 class ScriptGrid(QWidget):
-    """Context scripts in the left column, root scripts in the right one; each column fills from the top"""
+    """Context scripts in the left column, root scripts in the right one.
+
+    Each column is a stack of blocks from the top: single buttons and #group blocks, sorted by name.
+    """
 
     def __init__(self, scripts: list[script_lib.Script], context: str = "", parent: QWidget = None):
         super().__init__(parent)
         in_context, root = script_lib.scriptsForContext(scripts, context)
 
-        layout = QGridLayout()
+        layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 10)
+        layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
         self.buttons: list[ScriptButton] = []
-        columns = [column for column in (in_context, root) if column]
-        for column_index, column in enumerate(columns):
-            for row, script in enumerate(column):
-                button = ScriptButton(script, parent=self)
-                layout.addWidget(button, row, column_index, Qt.AlignTop)
-                self.buttons.append(button)
+        self.columns: list[list[tuple[str, list[ScriptButton]]]] = []
+        for column_scripts in (in_context, root):
+            if not column_scripts:
+                continue
+            column_layout = QVBoxLayout()
+            column_layout.setAlignment(Qt.AlignTop)
+            column = []
+            for name, block_scripts in script_lib.groupBlocks(column_scripts):
+                buttons = [ScriptButton(script) for script in block_scripts]
+                self.buttons += buttons
+                column.append((name, buttons))
+                if name:
+                    column_layout.addWidget(GroupBlock(name, buttons))
+                else:
+                    column_layout.addWidget(buttons[0], 0, Qt.AlignLeft)
+            self.columns.append(column)
+            layout.addLayout(column_layout)
         self.setLayout(layout)
 
         for key, paths in script_lib.duplicateHotkeys(in_context + root).items():
@@ -220,6 +332,8 @@ class ScriptManager(QWidget):
         sc_layout.addWidget(self.files_list)
 
         self.name_lineedit = QLineEdit()
+        self.group_lineedit = QLineEdit()
+        self.group_lineedit.setPlaceholderText("buttons of one group stand together")
         self.button_color_swatch = hou.qt.ColorSwatchButton()
         self.text_color_swatch = hou.qt.ColorSwatchButton()
         self.icon_lineedit = QLineEdit()
@@ -228,6 +342,7 @@ class ScriptManager(QWidget):
         self.hotkey_lineedit.setPlaceholderText("g, 1, F5...")
         self.file_lineedit = QLineEdit()
         self.file_lineedit.setReadOnly(True)
+        self.ref_label = QLabel()
         self.warning_label = QLabel()
         self.warning_label.setStyleSheet("color:#ffb04a")
         self.warning_label.setWordWrap(True)
@@ -237,6 +352,7 @@ class ScriptManager(QWidget):
         tc_layout = QVBoxLayout()
         tc_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         tc_layout.addLayout(HLayout([QLabel("Name"), self.name_lineedit]))
+        tc_layout.addLayout(HLayout([QLabel("Group"), self.group_lineedit]))
         tc_layout.addLayout(HLayout([QLabel("Button Color"), self.button_color_swatch]))
         tc_layout.addLayout(HLayout([QLabel("Text Color"), self.text_color_swatch]))
         tc_layout.addLayout(HLayout([QLabel("Icon"), self.icon_lineedit]))
@@ -245,6 +361,7 @@ class ScriptManager(QWidget):
         tc_layout.addLayout(HLayout([self.save_button, self.open_button]))
         tc_layout.addWidget(HSeparator())
         tc_layout.addLayout(HLayout([QLabel("File"), self.file_lineedit]))
+        tc_layout.addWidget(self.ref_label)
 
         main_layout.addLayout(fc_layout)
         main_layout.addLayout(sc_layout)
@@ -298,12 +415,21 @@ class ScriptManager(QWidget):
         return folder_scripts[row] if 0 <= row < len(folder_scripts) else None
 
     def updateInfo(self):
+        """Fields show the script's own header; inherited values (from #ref) are placeholders"""
         script = self.currentScript()
-        self.name_lineedit.setText(script.settings.get("label", "") if script else "")
+        own = script.ownSettings if script else {}
+        merged = script.settings if script else {}
+        for lineedit, key in ((self.name_lineedit, "label"), (self.group_lineedit, "group"),
+                              (self.icon_lineedit, "icon"), (self.hotkey_lineedit, "hotkey")):
+            lineedit.setText(own.get(key, ""))
         self.name_lineedit.setPlaceholderText(script.label if script else "")
-        self.icon_lineedit.setText((script.icon or "") if script else "")
-        self.hotkey_lineedit.setText((script.hotkey or "") if script else "")
+        self.group_lineedit.setPlaceholderText(merged.get("group", "") or "buttons of one group stand together")
+        self.icon_lineedit.setPlaceholderText(merged.get("icon", "") or "file name in icons/")
         self.file_lineedit.setText(script.path.as_posix() if script else "")
+        if script and script.ref:
+            self.ref_label.setText(f"#ref → {script.ref}" + (f"  ({script.error})" if script.error else ""))
+        else:
+            self.ref_label.setText("")
         if script:
             self.button_color_swatch.setColor(QColor(script.buttoncolor))
             self.text_color_swatch.setColor(QColor(script.textcolor))
@@ -331,20 +457,27 @@ class ScriptManager(QWidget):
         self.warning_label.setText("\n".join(self.warnings()))
 
     def editedSettings(self) -> dict:
+        """The script's own header after editing. Values equal to the inherited/default ones that the
+        header didn't set are not written: a #ref stub stays a stub."""
         script = self.currentScript()
-        settings = dict(script.settings) if script else {}
-        settings.update(
-            label=self.name_lineedit.text().strip(),
-            buttoncolor=self.button_color_swatch.color().name(),
-            textcolor=self.text_color_swatch.color().name(),
-            icon=self.icon_lineedit.text().strip(),
-            hotkey=self.hotkey_lineedit.text().strip(),
-        )
-        # Don't write defaults into scripts that didn't set them
-        for key, default in script_lib.DEFAULTS.items():
-            if key not in (script.settings if script else {}) and settings[key].lower() == default:
-                settings.pop(key)
-        return settings
+        if script is None:
+            return {}
+        own = dict(script.ownSettings)
+        inherited = {k: v for k, v in script.settings.items() if k not in own}
+        edited = {
+            "label": self.name_lineedit.text().strip(),
+            "group": self.group_lineedit.text().strip(),
+            "buttoncolor": self.button_color_swatch.color().name(),
+            "textcolor": self.text_color_swatch.color().name(),
+            "icon": self.icon_lineedit.text().strip(),
+            "hotkey": self.hotkey_lineedit.text().strip(),
+        }
+        for key, value in edited.items():
+            fallback = inherited.get(key) or script_lib.DEFAULTS.get(key, "")
+            if key not in own and value.lower() == fallback.lower():
+                continue
+            own[key] = value
+        return own
 
     def save(self):
         script = self.currentScript()
@@ -359,8 +492,9 @@ class ScriptManager(QWidget):
 
     def openFile(self):
         script = self.currentScript()
-        if script is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(script.path.as_posix()))
+        if script is not None:  # the code: the ref target for a #ref
+            path = script.runPath or script.path
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path.as_posix()))
 
     def keyPressEvent(self, event):
         if int(event.key()) == int(Qt.Key_Escape):

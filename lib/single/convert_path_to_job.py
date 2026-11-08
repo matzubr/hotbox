@@ -1,6 +1,7 @@
 #label:Convert to $JOB
+#group:Convert Paths
 #textcolor:#a0ceff
 
-from hotbox import lib_common
+from hotbox.common import paths
 
-lib_common.convertPaths("$JOB")
+paths.convertPaths("$JOB")

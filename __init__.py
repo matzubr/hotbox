@@ -18,7 +18,17 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _loaded_at = time.time()
 
 # Dependency order: modules are reloaded top to bottom
-_SUBMODULES = ("utils.qt", "utils.scripts", "utils.runner", "utils.utility", "utils.widgets", "lib_common", "main")
+_SUBMODULES = (
+    "utils.qt",
+    "utils.scripts",
+    "utils.runner",
+    "utils.utility",
+    "utils.widgets",
+    "common.panes",
+    "common.nodes",
+    "common.paths",
+    "main",
+)
 
 
 def reload_modules():
@@ -31,7 +41,7 @@ def reload_modules():
 
 
 def _filesChangedSinceLoad() -> bool:
-    tool_files = list(_PACKAGE_DIR.glob("*.py")) + list(_PACKAGE_DIR.joinpath("utils").glob("*.py"))
+    tool_files = [f for folder in ("", "utils", "common") for f in _PACKAGE_DIR.joinpath(folder).glob("*.py")]
     return max((f.stat().st_mtime for f in tool_files), default=0) > _loaded_at
 
 

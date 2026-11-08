@@ -1,4 +1,5 @@
 #label:Camera Bake Keyframes
+#group:Bake
 #textcolor:#ffffff
 #buttoncolor:#16182b
 #hotkey:2

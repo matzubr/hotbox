@@ -27,12 +27,12 @@ def runScript(path: Path, label: str = "") -> bool:
         pass
     except Exception as e:  # noqa: BLE001  any script error must not break the hotbox
         traceback.print_exc()
-        _status(f"HotBox: {path.name} failed: {e}", error=True)
+        status(f"HotBox: {path.name} failed: {e}", error=True)
         return False
     return True
 
 
-def _status(message: str, error: bool = False) -> None:
+def status(message: str, error: bool = False) -> None:
     try:
         severity = hou.severityType.Error if error else hou.severityType.Message
         hou.ui.setStatusMessage(message, severity=severity)
