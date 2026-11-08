@@ -221,36 +221,69 @@ def test_frame_range_from_keyframes(hou, monkeypatch):
     hou.playbar.setPlaybackRange.assert_called_once_with(1001, 1100)
 
 
+class _Node:
+    """Scene node with file parms {name: (value, write?, sequence template)}"""
+
+    def __init__(self, path, type_name="file", parms=None, children=(), locked=False):
+        self._path, self._type, self._children, self._locked = path, type_name, list(children), locked
+        self._parms = {}
+        for name, (value, write, sequence) in (parms or {}).items():
+            parm = MagicMock()
+            parm.name.return_value = name
+            parm.eval.return_value = value
+            parm.isDisabled.return_value = False
+            parm.node.return_value = self
+            parm.parmTemplate().tags.return_value = {"filechooser_mode": "write"} if write else {}
+            parm.evalAtFrame.side_effect = (lambda f, t=sequence: t.format(frame=f)) if sequence else \
+                (lambda f, v=value: v)
+            self._parms[name] = parm
+
+    def path(self):
+        return self._path
+
+    def children(self):
+        return self._children
+
+    def isLockedHDA(self):
+        return self._locked
+
+    def spareParms(self):
+        return ()
+
+    def type(self):
+        return MagicMock(nameWithCategory=lambda: f"Sop/{self._type}", category=lambda: "Sop")
+
+    def parm(self, name):
+        return self._parms.get(name)
+
+
 def test_missing_files_skip_outputs_existing_files_and_sequences(hou, monkeypatch, tmp_path):
     (tmp_path / "here.abc").write_text("")
     (tmp_path / "seq.1001.exr").write_text("")
     monkeypatch.setattr(hou, "ropNodeTypeCategory", lambda: "Driver", raising=False)
+    looked_up = []
 
-    def parm(path, value, write=False, sequence=None):
-        p = MagicMock()
-        p.path.return_value = path
-        p.eval.return_value = value
-        p.isDisabled.return_value = False
-        p.node().isInsideLockedHDA.return_value = False
-        p.node().type().category.return_value = "Sop"
-        p.parmTemplate().tags.return_value = {"filechooser_mode": "write"} if write else {}
-        p.evalAtFrame.side_effect = (lambda f: sequence.format(frame=f)) if sequence else (lambda f: value)
-        return p
+    def templates(node, include_hidden):
+        looked_up.append(node.type().nameWithCategory())
+        return list(node._parms)
 
-    lost = parm("/obj/geo/file1/file", "/nowhere/lost.bgeo")
-    refs = [
-        (lost, ""),
-        (lost, ""),  # same parm twice
-        (parm("/obj/geo/abc/fileName", (tmp_path / "here.abc").as_posix()), ""),
-        (parm("/obj/geo/cache/sopoutput", "/nowhere/out.bgeo", write=True), ""),
-        (parm("/obj/geo/seq/file", (tmp_path / "seq.0999.exr").as_posix(),
-              sequence=tmp_path.as_posix() + "/seq.{frame}.exr"), ""),
-        (parm("/obj/geo/op/file", "op:/obj/geo/null1"), ""),
-        (None, "/hda/path"),
-    ]
-    monkeypatch.setattr(hou, "fileReferences", lambda: refs, raising=False)
+    monkeypatch.setattr(paths, "_fileTemplateNames", templates)
+    lost = _Node("/obj/geo/lost", parms={"file": ("/nowhere/lost.bgeo", False, None)})
+    inside_asset = _Node("/obj/asset/inner", parms={"file": ("/nowhere/inner.bgeo", False, None)})
+    scene = _Node("/", "root", children=[_Node("/obj", "obj", children=[
+        lost,
+        _Node("/obj/geo/abc", "alembic", parms={"fileName": ((tmp_path / "here.abc").as_posix(), False, None)}),
+        _Node("/obj/geo/cache", "filecache", parms={"sopoutput": ("/nowhere/out.bgeo", True, None)}),
+        _Node("/obj/geo/seq", parms={"file": ((tmp_path / "seq.0999.exr").as_posix(), False,
+                                              tmp_path.as_posix() + "/seq.{frame}.exr")}),
+        _Node("/obj/geo/op", parms={"file": ("op:/obj/geo/null1", False, None)}),
+        _Node("/obj/asset", "myasset", children=[inside_asset], locked=True),
+    ])])
+    monkeypatch.setattr(hou, "node", lambda path: scene, raising=False)
 
-    assert paths.missingFiles() == [(lost, "/nowhere/lost.bgeo")]
+    assert paths.missingFiles() == [(lost.parm("file"), "/nowhere/lost.bgeo")]
+    assert looked_up.count("Sop/file") == 1  # parm templates once per node type
+    assert "/obj/asset/inner" not in [p.node().path() for p in paths.sceneFileParms()]  # locked HDA not entered
 
 
 def test_sop_import_names_prims_after_the_source(hou, monkeypatch):

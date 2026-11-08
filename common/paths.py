@@ -64,15 +64,19 @@ def _allParmTemplates(group_or_folder):
             yield from _allParmTemplates(parm_template)
 
 
-def fileParms(node, include_hidden: bool = False) -> list[str]:
-    """Names of the file reference parameters (visible ones by default), multiparm instances expanded"""
-    names = [
+def _fileTemplateNames(node, include_hidden: bool) -> list[str]:
+    """Names of the file reference parm templates of the node ('file#' for multiparms)"""
+    return [
         t.name()
         for t in _allParmTemplates(node.parmTemplateGroup())
         if t.type() == hou.parmTemplateType.String
         and t.stringType() == hou.stringParmType.FileReference
         and (include_hidden or not t.isHidden())
     ]
+
+
+def _expandMultiparms(node, names: list[str]) -> list[str]:
+    """'file#' -> 'file1', 'file2'... as many as the node has"""
     result = [name for name in names if "#" not in name]
     for name in names:
         if "#" not in name:
@@ -85,6 +89,11 @@ def fileParms(node, include_hidden: bool = False) -> list[str]:
             if parm:
                 result.append(parm.name())
     return result
+
+
+def fileParms(node, include_hidden: bool = False) -> list[str]:
+    """Names of the file reference parameters (visible ones by default), multiparm instances expanded"""
+    return _expandMultiparms(node, _fileTemplateNames(node, include_hidden))
 
 
 NOT_FILES = ("op:", "opdef:", "oplib:", "temp:", "stage:")
@@ -100,17 +109,40 @@ def isOutputParm(parm) -> bool:
         return False
 
 
-def sceneFileParms() -> list:
-    """Every file parameter of the scene that reads a file: no outputs, no disabled ones, nothing inside locked HDAs"""
-    result, seen = [], set()
-    for parm, _ in hou.fileReferences():
-        if parm is None or parm.path() in seen:
+def walkNodes(root=None):
+    """Every node under root (default: the whole scene), depth first.
+    Locked HDAs are not entered: their insides belong to the asset and are often huge."""
+    stack = [root or hou.node("/")]
+    while stack:
+        node = stack.pop()
+        yield node
+        if node is not root and node.isLockedHDA():
             continue
-        seen.add(parm.path())
-        node = parm.node()
-        if node.isInsideLockedHDA() or parm.isDisabled() or isOutputParm(parm):
+        stack.extend(reversed(node.children()))
+
+
+def sceneFileParms(root=None) -> list:
+    """Every file parameter of the scene that reads a file: no outputs, no disabled ones, nothing inside locked HDAs.
+
+    Walks the nodes itself instead of hou.fileReferences(), which can crash Houdini on very large scenes.
+    The file parm templates are looked up once per node type (per node only when it has spare parameters).
+    """
+    by_type: dict[str, list[str]] = {}
+    result = []
+    for node in walkNodes(root):
+        if node.spareParms():
+            names = _fileTemplateNames(node, include_hidden=False)
+        else:
+            key = node.type().nameWithCategory()
+            if key not in by_type:
+                by_type[key] = _fileTemplateNames(node, include_hidden=False)
+            names = by_type[key]
+        if not names:
             continue
-        result.append(parm)
+        for name in _expandMultiparms(node, names):
+            parm = node.parm(name)
+            if parm is not None and not parm.isDisabled() and not isOutputParm(parm):
+                result.append(parm)
     return result
 
 
