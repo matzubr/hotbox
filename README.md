@@ -6,7 +6,10 @@ written from scratch for Houdini.
 HotBox is an orchestrator: it doesn't do anything by itself, it finds the scripts in `lib/`, shows the ones that fit
 what you are doing and runs them.
 
-![dino](icons/dino.jpg)
+<p align="center">
+  <img src="docs/hotbox.png" width="49%" alt="HotBox with one camera selected">
+  <img src="docs/hotbox_animation.gif" width="49%" alt="Hover wave, zoom and press animation">
+</p>
 
 ## What it shows
 
@@ -62,6 +65,8 @@ A file with only a header runs another script from `lib/`:
 It takes the label, colors, icon and group of the target (its own header overrides them); the hotkey is not
 inherited, choose it per context. A broken reference (file renamed, loop) shows a red button with the reason
 in the tooltip; the tests check every `#ref` in `lib/`.
+
+![Script Manager](docs/script_manager.png)
 
 Or edit them in the **Script Manager** (bottom right button, the DinoWrite look, with a live animated preview of
 the button): it writes the header back into the script and warns
@@ -125,6 +130,7 @@ PySide6 for offscreen GUI tests, `hou` is stubbed). The repo folder must be name
 uv sync
 uv run pytest
 uv run ruff check __init__.py main.py common utils tests
+uv run --with pillow python docs/make_images.py   # README images
 ```
 
 ## Credits
