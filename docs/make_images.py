@@ -3,9 +3,12 @@
     uv run --with pillow python docs/make_images.py
 
 hou is stubbed like in the tests, so Houdini icons (SOP_null, OBJ_camera...) are not drawn.
+The images use a copy of lib/ where every package is called 'studio-name': no real studio names in public images.
 """
 import builtins
 import os
+import re
+import shutil
 import sys
 import tempfile
 import types
@@ -28,6 +31,17 @@ from PySide6.QtTest import QTest
 
 BACKGROUND = QColor("#262626")
 FRAME_MS = 33
+PACKAGE = "studio-name"
+
+
+def anonymousLibrary() -> Path:
+    """Copy of lib/ with every #package renamed to PACKAGE; returns the folder that contains 'lib'"""
+    work = Path(tempfile.mkdtemp())
+    shutil.copytree(ROOT / "lib", work / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+    for script in (work / "lib").rglob("*.py"):
+        text = script.read_text(encoding="utf-8")
+        script.write_text(re.sub(r"(?m)^#package:.*$", f"#package:{PACKAGE}", text), encoding="utf-8")
+    return work
 
 
 class Swatch(QtWidgets.QPushButton):
@@ -63,10 +77,12 @@ def main():
     from hotbox import main as hotbox_main
     from hotbox.utils import manager, settings, utility
 
-    settings.setPackageEnabled("blackpoint", True)  # the full camera menu in the images
+    work = anonymousLibrary()
+    os.chdir(work)  # relative lib path: no personal absolute paths in the File field of a public image
+    settings.setPackageEnabled(PACKAGE, True)  # the full camera menu in the images
 
     utility.detectContext = lambda: utility.Context("single", "cam", "cam", None)
-    box = hotbox_main.HotBox()
+    box = hotbox_main.HotBox(lib_dir=Path("lib"))
     box._fadeAnimation.stop()
     box.setWindowOpacity(1)
     app.processEvents()
@@ -94,8 +110,6 @@ def main():
     box.close()
     saveGif(frames, DOCS / "hotbox_animation.gif")
 
-    settings.setPackageEnabled("trehmer", True)  # Save HIP is shown in the manager
-    os.chdir(ROOT)  # relative lib path: no personal absolute paths in the File field of a public image
     script_manager = manager.ScriptManager(lib_folder=Path("lib"))
     script_manager._fadeAnimation.stop()
     script_manager.setWindowOpacity(1)
@@ -113,22 +127,30 @@ def main():
     QTest.qWait(300)
     app.processEvents()
     onBackground(packages, pad=0).save((DOCS / "packages.png").as_posix())
+    os.chdir(ROOT)
+    shutil.rmtree(work, ignore_errors=True)
     print("docs images updated")
 
 
 def saveGif(frames, path: Path):
+    """One palette for all frames: per frame palettes made Pillow's frame optimization drop buttons"""
     with tempfile.TemporaryDirectory() as folder:
         images = []
         for index, frame in enumerate(frames):
             png = Path(folder, f"{index:03d}.png")
             frame.save(png.as_posix())
             image = Image.open(png).convert("RGB")
-            image = image.resize((image.width * 3 // 4, image.height * 3 // 4), Image.LANCZOS)
-            images.append(image.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE))
-    durations = [FRAME_MS] * len(images)
+            images.append(image.resize((image.width * 3 // 4, image.height * 3 // 4), Image.LANCZOS))
+    # The palette from all frames side by side, so hover colors are in it too
+    sheet = Image.new("RGB", (images[0].width, images[0].height * len(images)))
+    for index, image in enumerate(images):
+        sheet.paste(image, (0, image.height * index))
+    palette = sheet.quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    paletted = [image.quantize(palette=palette, dither=Image.Dither.NONE) for image in images]
+    durations = [FRAME_MS] * len(paletted)
     durations[-1] = 900
-    images[0].save(path, save_all=True, append_images=images[1:], duration=durations, loop=0, optimize=True,
-                   disposal=1)
+    paletted[0].save(path, save_all=True, append_images=paletted[1:], duration=durations, loop=0, optimize=False,
+                     disposal=1)
 
 
 if __name__ == "__main__":

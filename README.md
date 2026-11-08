@@ -86,12 +86,12 @@ Scripts that only make sense at one studio go into a package:
 
 ```python
 #label:Camera Import
-#package:blackpoint
+#package:studio-name
 ```
 
 The gear in the Script Manager title bar lists all packages with a switch each. A turned off package hides its
 buttons (and its `#ref`s) from the hotbox; scripts without `#package` are always shown. Several packages:
-`#package:blackpoint, trehmer` (shown when any of them is on).
+`#package:studio-name, other-studio` (shown when any of them is on).
 
 <img src="docs/packages.png" width="380" alt="Packages">
 
@@ -100,10 +100,11 @@ saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json` (not in the tool
 packages on for everyone in `houdini.env`; the user's own switch still wins:
 
 ```
-HOTBOX_PACKAGES = "blackpoint"
+HOTBOX_PACKAGES = "studio-name"
 ```
 
-Shipped packages: `blackpoint` (Camera Import/Export/Setup, Last Alembic Track, Convert to $FILM), `trehmer` (Save HIP).
+The studio specific scripts in `lib/` (Camera Import/Export/Setup, Last Alembic Track, Convert to $FILM, Save HIP)
+are in packages: turn them on in the gear menu if you need them.
 
 ### Shared helpers: `common/`
 
