@@ -8,7 +8,7 @@ what you are doing and runs them.
 
 <p align="center">
   <img src="docs/hotbox.png" width="49%" alt="HotBox with one camera selected">
-  <img src="docs/hotbox_animation.gif" width="49%" alt="Hover wave, zoom and press animation">
+  <img src="docs/hotbox_animation.gif" width="49%" alt="Hover wave and zoom">
 </p>
 
 ## What it shows

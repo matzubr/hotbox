@@ -72,7 +72,7 @@ def main():
     app.processEvents()
     onBackground(box).save((DOCS / "hotbox.png").as_posix())
 
-    # Animation: hover one button, move to another and press it
+    # Animation: hover one button, then move to another
     frames = []
 
     def record(count: int, wait: bool = True):
@@ -90,8 +90,6 @@ def main():
     first.endHover()
     target.startHover(QPointF(150, 20))
     record(16)
-    target.playPress()
-    record(8)
     record(6, wait=False)
     box.close()
     saveGif(frames, DOCS / "hotbox_animation.gif")
