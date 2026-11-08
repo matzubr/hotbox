@@ -38,6 +38,15 @@ import hou
 All keys are optional (the label defaults to the file name, icons are looked up in `icons/`).
 The script runs as `__main__`, `sys.exit()` just stops it, errors are printed to the console and shown in the status bar.
 
+Code shared by several scripts lives in `lib_common.py` (e.g. the same tools in `lib/single/` and `lib/multiple/`):
+
+```python
+#label:Create Null
+from hotbox import lib_common
+
+lib_common.createNull()
+```
+
 Headers are read from the files every time the hotbox opens: nothing is cached, nothing is written into the tool folder.
 The folder can be copied from user to user as is.
 

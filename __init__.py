@@ -18,7 +18,7 @@ _PACKAGE_DIR = Path(__file__).resolve().parent
 _loaded_at = time.time()
 
 # Dependency order: modules are reloaded top to bottom
-_SUBMODULES = ("utils.qt", "utils.scripts", "utils.runner", "utils.utility", "utils.widgets", "main")
+_SUBMODULES = ("utils.qt", "utils.scripts", "utils.runner", "utils.utility", "utils.widgets", "lib_common", "main")
 
 
 def reload_modules():

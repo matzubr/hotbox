@@ -1,27 +1,6 @@
 #label:Create Null
 #textcolor:#ff8b48
 
-import hou 
+from hotbox import lib_common
 
-def main():
-    nodes = hou.selectedNodes()
-    
-    if len(nodes)==0:
-        return
-    
-    if len(nodes)==1:
-        node = nodes[0]
-        button, name = hou.ui.readInput("Name", buttons=("OK", "Cancel"), default_choice=0, close_choice=1)
-        if button != 0:
-            return
-        name = name.strip()
-        if len(name)==0:
-            name = node.name()
-        node.createOutputNode("null",f"OUT_{name}")
-    else:
-        for node in nodes:
-            name = node.name()
-            node.createOutputNode("null",f"OUT_{name}")
-
-
-main()
+lib_common.createNull()
