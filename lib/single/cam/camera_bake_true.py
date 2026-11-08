@@ -57,8 +57,8 @@ def bake_camera(source_cam):
                          "path": "focal aperture",
                          "range": "user",
                          "units": "frames",
-                         "start": hou.playbar.frameRange()[0],
-                         "end": hou.playbar.frameRange()[1]})
+                         "start": hou.playbar.playbackRange()[0],
+                         "end": hou.playbar.playbackRange()[1]})
 
     chop_merge = chop_object.createOutputNode("merge")
     chop_merge.setInput(1, chop_fetch, 0)
