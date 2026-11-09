@@ -153,23 +153,29 @@ def _childOf(topnet, type_name: str, exclude=()):
 
 
 def buildChain(topnet, wedge, node) -> list[str]:
-    """Geometry Import -> Wedge -> ROP Geometry Output. The geometry comes from the Geometry Import (its SOP Path),
-    the ROP writes it per wedge (Use External SOP off). Returns what couldn't be set."""
+    """Wedge -> ROP Geometry Output cooking the SOP network itself (Use External SOP on, SOP Path = the network's
+    display node). Pushed values (Target Parameter) are applied only by render TOPs cooking the SOP: geometry
+    imported before the Wedge (Geometry Import) would be the same for every wedge. Returns what couldn't be set."""
     problems = []
-    source = _childOf(topnet, "geometryimport") or topnet.createNode("geometryimport")
+    for child in topnet.children():  # the Geometry Import a new TOP network may come with: not used
+        if child.type().name() == "geometryimport" and not child.inputs() and not child.outputs():
+            child.destroy()
     rop = _childOf(topnet, "ropgeometry") or topnet.createNode("ropgeometry", f"write_{node.name()}")
-    wedge.setInput(0, source)
     rop.setInput(0, wedge)
-    wedge.setPosition(source.position() - hou.Vector2(0, 1.5))
     rop.setPosition(wedge.position() - hou.Vector2(0, 1.5))
     rop.setDisplayFlag(True)
 
+    written = outputSop(node)
     external = parmByLabel(rop, "Use External SOP", kinds=("Toggle",))
     if external is not None:
-        external.set((0,))
+        external.set((1,))
     else:
-        problems.append("Use External SOP: off")
-    written = outputSop(node)
+        problems.append("Use External SOP: on")
+    sop_path = parmByLabel(rop, "SOP Path", kinds=("String",))
+    if sop_path is not None:
+        sop_path.set((written.path(),))
+    else:
+        problems.append(f"SOP Path = {written.path()}")
     output = parmByLabel(rop, "Output File", kinds=("String",))
     if output is not None:
         output.set((OUTPUT_FILE.format(name=written.name()),))

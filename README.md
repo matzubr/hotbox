@@ -159,7 +159,7 @@ Tools seen in other Houdini libraries come as packages named after the library (
 |---|---|
 | `qLib` | Recover Crash, Jump to Clipboard Path, **Viewport**: Templates / Guides / Background / Time Dependency, **Select**: Bypassed / Time-Dependent / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
 | `Aelib` | Save Incremental, Open HIP Folder, Lock Camera (cam, hlight) |
-| `LV-Tools` | Make Space Below (one node), Wedge (Geometry Import -> Wedge -> ROP Geometry Output for picked parameters), Load Wedges (ropgeometry TOP: File SOP per written wedge + Switch), Transfer Transform (two objects), Cache Size (filecache) |
+| `LV-Tools` | Make Space Below (one node), Wedge (Wedge -> ROP Geometry Output for picked parameters), Load Wedges (ropgeometry TOP: File SOP per written wedge + Switch), Transfer Transform (two objects), Cache Size (filecache) |
 | `BeeHou` | Focus Target (cam: a null that drives the focus distance) |
 | `AutoCacheOut` | Version Up (filecache) |
 | `HelpToComment` | Help to Comment (the help summary as the node comment) |

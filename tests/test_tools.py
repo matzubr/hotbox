@@ -393,34 +393,33 @@ def test_wedge_overwrite_toggle_and_connection(vec):
 
 
 
-def test_wedge_chain_geometry_import_wedge_rop(hou, vec, monkeypatch):
+def test_wedge_chain_rop_cooks_the_sop_network(hou, vec, monkeypatch):
     sop = object()
     monkeypatch.setattr(hou, "sopNodeTypeCategory", lambda: sop, raising=False)
     importer, scheduler = MagicMock(), MagicMock()
     importer.type.return_value.name.return_value = "geometryimport"
+    importer.inputs.return_value = importer.outputs.return_value = []
     scheduler.type.return_value.name.return_value = "localscheduler"
-    importer.position.return_value = Vec(0, 0)
     topnet = MagicMock()
     topnet.children.return_value = [scheduler, importer]
     rop = MagicMock()
-    rop.childTypeCategory.return_value = sop
-    external, output = _tuple("usesoppath", "Use External SOP", "Toggle"), _tuple("sopoutput", "Output File", "String")
-    rop.parmTuples.return_value = [external, output]
+    external, sop_path = _tuple("usesoppath", "Use External SOP", "Toggle"), _tuple("soppath", "SOP Path", "String")
+    output = _tuple("sopoutput", "Output File", "String")
+    rop.parmTuples.return_value = [external, sop_path, output]
     topnet.createNode.return_value = rop
     wedge_node = MagicMock()
-    wedge_node.position.return_value = Vec(0, -1.5)
+    wedge_node.position.return_value = Vec(0, 0)
     node = MagicMock()
     node.type.return_value.category.return_value = sop
     node.parent.return_value.displayNode.return_value.name.return_value = "OUT"
     node.parent.return_value.displayNode.return_value.path.return_value = "/obj/geo1/OUT"
 
     assert wedge.buildChain(topnet, wedge_node, node) == []
-    wedge_node.setInput.assert_called_once_with(0, importer)
+    importer.destroy.assert_called_once()  # geometry imported before the Wedge is the same for every wedge
     rop.setInput.assert_called_once_with(0, wedge_node)
-    external.set.assert_called_once_with((0,))
+    external.set.assert_called_once_with((1,))
+    sop_path.set.assert_called_once_with(("/obj/geo1/OUT",))
     output.set.assert_called_once_with(("$HIP/geo/wedge/OUT/OUT.`@wedgeindex`.$F4.bgeo.sc",))
-    rop.createNode.assert_not_called()  # nothing inside the ROP: the geometry comes from the Geometry Import
-
 
 def test_wedge_indices_found_on_disk(tmp_path):
     folder = tmp_path / "geo" / "wedge" / "OUT"
