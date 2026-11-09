@@ -106,21 +106,10 @@ def eventKeyCodes(event) -> list[int]:
     """Key codes to match a key press against: the key itself and, for another keyboard layout
     (Russian), the Latin key on the same physical key"""
     codes = [int(event.key())]
-    text = event.text()
-    candidates = [script_lib.latinKey(text)]
-    if event.modifiers() & Qt.ShiftModifier:  # Shift+1 gives '!': still the hotkey '1'
-        candidates.append(script_lib.unshiftedKey(text))
-    for candidate in candidates:
-        code = keyCode(candidate)
-        if code is not None and code not in codes:
-            codes.append(code)
+    latin = keyCode(script_lib.latinKey(event.text()))
+    if latin is not None and latin not in codes:
+        codes.append(latin)
     return codes
-
-
-def modifierNames(modifiers) -> frozenset[str]:
-    """Qt keyboard modifiers -> {'shift', 'ctrl', 'alt'} (ctrl: Cmd on macOS, as Qt maps it)"""
-    names = {"shift": Qt.ShiftModifier, "ctrl": Qt.ControlModifier, "alt": Qt.AltModifier}
-    return frozenset(name for name, flag in names.items() if modifiers & flag)
 
 
 def mixColor(color: QColor, other: QColor, amount: float) -> QColor:
@@ -436,10 +425,7 @@ class ScriptButton(Button):
         super().__init__(label, script.buttoncolor, text_color, script.icon, parent)
         self.script = script
         self.hotkey = script.hotkey
-        self.shifted = False
         tooltip = script.relpath
-        if script.shiftLabel:
-            tooltip += f"\nShift: {script.shiftLabel}"
         if script.ref:
             tooltip += f"\n→ {script.ref}"
         if script.error:
@@ -447,18 +433,6 @@ class ScriptButton(Button):
         if script.root is not None:
             tooltip += f"\n{script.root.as_posix()}"
         self.setToolTip(tooltip)
-
-    def labelText(self) -> str:
-        label = (self.script.shiftLabel if self.shifted else None) or self.script.label
-        return f"{label} ({self.hotkey})" if self.hotkey else label
-
-    def setShifted(self, shifted: bool):
-        """Shift held: the #shiftlabel text (what a Shift+click does)"""
-        if shifted == self.shifted:
-            return
-        self.shifted = shifted
-        if self.script.shiftLabel:
-            self.updateText(self.labelText())
 
 
 class ScriptGrid(QWidget):

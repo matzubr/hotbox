@@ -139,7 +139,6 @@ class ScriptManager(RoundedWindow, QWidget):
         self.ref_lineedit = self.ref_field.lineedit
         self.ref_lineedit.setPlaceholderText("run another script: single/create_null.py")
         self.name_lineedit = QLineEdit()
-        self.shift_lineedit = QLineEdit()
         self.group_lineedit = QLineEdit()
         self.package_field = ChoiceField(multiple=True, empty_text="No packages yet")
         self.package_lineedit = self.package_field.lineedit
@@ -172,7 +171,6 @@ class ScriptManager(RoundedWindow, QWidget):
         rows = [
             ("Ref", self.ref_field),
             ("Name", self.name_lineedit),
-            ("Shift label", self.shift_lineedit),
             ("Group", self.group_lineedit),
             ("Package", self.package_field),
             ("Button color", self.button_color_swatch),
@@ -231,8 +229,8 @@ class ScriptManager(RoundedWindow, QWidget):
         self.mode_combobox.currentIndexChanged.connect(self.updateScripts)
         self.folders_list.currentRowChanged.connect(self.updateFilesList)
         self.files_list.currentRowChanged.connect(self.updateInfo)
-        for lineedit in (self.ref_lineedit, self.name_lineedit, self.shift_lineedit, self.group_lineedit,
-                         self.package_lineedit, self.icon_lineedit, self.hotkey_lineedit):
+        for lineedit in (self.ref_lineedit, self.name_lineedit, self.group_lineedit, self.package_lineedit,
+                         self.icon_lineedit, self.hotkey_lineedit):
             lineedit.textChanged.connect(self.onEdited)
         for swatch in (self.button_color_swatch, self.text_color_swatch):
             signal = getattr(swatch, "colorChanged", None)
@@ -348,7 +346,6 @@ class ScriptManager(RoundedWindow, QWidget):
         own = script.ownSettings if script else {}
         self._loading = True
         for lineedit, key in ((self.ref_lineedit, "ref"), (self.name_lineedit, "label"),
-                              (self.shift_lineedit, "shiftlabel"),
                               (self.group_lineedit, "group"), (self.package_lineedit, "package"),
                               (self.icon_lineedit, "icon"), (self.hotkey_lineedit, "hotkey")):
             lineedit.setText(own.get(key, ""))
@@ -381,7 +378,6 @@ class ScriptManager(RoundedWindow, QWidget):
             self._loading = False
         stem = script.path.stem if script else ""
         self.name_lineedit.setPlaceholderText(inherited.get("label") or stem)
-        self.shift_lineedit.setPlaceholderText(inherited.get("shiftlabel") or "text while Shift is held (optional)")
         self.group_lineedit.setPlaceholderText(inherited.get("group") or "buttons of one group stand together")
         self.package_lineedit.setPlaceholderText(inherited.get("package") or "shown only when the package is on")
         self.icon_lineedit.setPlaceholderText(inherited.get("icon") or "dino.svg / SOP_null")
@@ -440,7 +436,6 @@ class ScriptManager(RoundedWindow, QWidget):
         edited = {
             "ref": self.ref_lineedit.text().strip(),
             "label": self.name_lineedit.text().strip(),
-            "shiftlabel": self.shift_lineedit.text().strip(),
             "group": self.group_lineedit.text().strip(),
             "package": self.package_lineedit.text().strip(),
             "buttoncolor": self.button_color_swatch.color().name(),

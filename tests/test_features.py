@@ -1,4 +1,4 @@
-"""Several lib folders, Shift variants, search, recent scripts, the error window."""
+"""Several lib folders, search, recent scripts, the error window, new scripts."""
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QLabel
 @pytest.fixture
 def library(tmp_path):
     lib = tmp_path / "lib"
-    write_script(lib, "all/Sop/merge.py", "#label:Merge Relative\n#shiftlabel:Merge Absolute\n#hotkey:1\n")
+    write_script(lib, "all/Sop/merge.py", "#label:Merge Relative\n#hotkey:1\n")
     write_script(lib, "all/flipbook.py", "#label:Flipbook\n#hotkey:f\n")
     write_script(lib, "all/save.py", "#label:Save HIP\n")
     write_script(lib, "all/reload.py", "#label:Reload Caches\n")
@@ -88,46 +88,6 @@ def test_hotbox_and_manager_read_every_folder(houdini, tmp_path, monkeypatch):
     names = [manager.files_list.item(i).text() for i in range(manager.files_list.count())]
     assert names == ["flipbook.py", "mine.py  · mine"]  # where a script comes from, built-in lib unmarked
     manager.close()
-
-
-# --- Shift --------------------------------------------------------------------------------------------------------
-
-def test_shift_shows_the_shift_labels_and_reaches_the_script(houdini, library, monkeypatch):
-    from hotbox.utils.qt import QEvent, QGuiApplication
-    from PySide6.QtTest import QTest
-
-    ran = MagicMock()
-    monkeypatch.setattr(runner, "runScript", ran)
-    box = _hotbox(monkeypatch, library)
-    merge = next(b for b in box.script_buttons if b.script.relpath == "Sop/merge.py")
-    assert merge.label == "Merge Relative (1)"
-
-    box.keyPressEvent(_key(Qt.Key_Shift, modifiers=Qt.ShiftModifier))
-    assert merge.label == "Merge Absolute (1)"
-    box.keyReleaseEvent(QKeyEvent(QEvent.KeyRelease, Qt.Key_Shift, Qt.NoModifier))
-    assert merge.label == "Merge Relative (1)"
-
-    monkeypatch.setattr(QGuiApplication, "keyboardModifiers", staticmethod(lambda: Qt.ShiftModifier))
-    box.keyPressEvent(_key(Qt.Key_Exclam, "!", Qt.ShiftModifier))  # Shift+1 on a US keyboard
-    QTest.qWait(box.FADE_OUT + 150)
-    assert ran.call_args.args[0] == library / "all" / "Sop" / "merge.py"
-    assert ran.call_args.kwargs["modifiers"] == frozenset({"shift"})
-    assert ran.call_args.kwargs["label"] == "Merge Absolute"
-
-
-def test_modifiers_inside_the_script(tmp_path, hou):
-    import hotbox
-
-    path = write_script(tmp_path, "s.py", body="import hotbox\nRESULT.append(set(hotbox.modifiers()))\n")
-    result = []
-    import builtins
-    builtins.RESULT = result
-    try:
-        assert runner.runScript(path, modifiers={"shift", "ctrl"})
-    finally:
-        del builtins.RESULT
-    assert result == [{"shift", "ctrl"}]
-    assert hotbox.modifiers() == frozenset()
 
 
 # --- search -------------------------------------------------------------------------------------------------------

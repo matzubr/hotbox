@@ -1,4 +1,3 @@
-#ref:all/Sop/object_merge.py
+#ref:all/Sop/object_merge_absolute.py
 #label:Object Merge Paste
-#shiftlabel:Object Merge Paste Absolute
 #textcolor:#fff048

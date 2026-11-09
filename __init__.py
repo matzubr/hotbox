@@ -53,17 +53,6 @@ def _filesChangedSinceLoad() -> bool:
     return max((f.stat().st_mtime for f in tool_files), default=0) > _loaded_at
 
 
-def modifiers() -> frozenset:
-    """For library scripts: keys held when the button was clicked, {'shift', 'ctrl', 'alt'}
-
-        import hotbox
-        absolute = "shift" in hotbox.modifiers()
-    """
-    from .utils import runner
-
-    return runner.modifiers()
-
-
 def manager(reload=False):
     """Open the Script Manager on its own (shelf tool 'HotBox Scripts')"""
     if reload or _filesChangedSinceLoad():

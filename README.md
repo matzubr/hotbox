@@ -31,7 +31,6 @@ Bottom row: open the HotBox folder · current context (click to close) · Script
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
 Everything a script does is one undo step.
 
-**Shift**: buttons with a `#shiftlabel` show what they do on Shift+click (Object Merge Relative → Absolute).
 **Tab** starts search: type a part of a label (in any keyboard layout), the other buttons fade out, `Enter` runs the
 first match, `Esc` or `Tab` ends the search.
 **Recent**: a row with the last 4 scripts you ran that fit the current selection/network.
@@ -91,20 +90,6 @@ Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `S
 The script runs as `__main__`, `sys.exit()` just stops it. When it fails, a window shows the error and the traceback;
 **Open in Script Manager** opens the script with the failing line highlighted in the code panel.
 
-### Shift+click: a second variant of a script
-
-```python
-#label:Object Merge Relative
-#shiftlabel:Object Merge Absolute
-
-import hotbox
-relative = "shift" not in hotbox.modifiers()
-```
-
-`hotbox.modifiers()` is the set of keys held on the click or hotkey (`shift`, `ctrl`, `alt`; `ctrl` is Cmd on macOS).
-`#shiftlabel` is the button text while Shift is held. One button instead of two: Object Merge, Fetch and
-Copy Path (Shift: the file path) work like this.
-
 ### Your own scripts: `HOTBOX_PATH`
 
 Keep personal and studio scripts outside the tool folder, so `git pull` never touches them:
@@ -154,9 +139,9 @@ are in packages: turn them on in the gear menu if you need them.
 |---|---|
 | everywhere, nothing selected | Flipbook, **Scene**: Missing Files (pick to jump to the nodes), Reload Caches |
 | Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
-| Sop, nothing selected | Object Merge Relative, Shift: Absolute (from node paths in the clipboard) |
-| Lop, nothing selected | Fetch Relative (Shift: Absolute), SOP Import (prims at `/geo/<name>`), Material Library + Assign |
-| any node(s) selected | Create Vop / Wrangle, Create Null, Convert Paths, Copy Node Path (Shift: File Path), **Network**: Network Box, Color by Type |
+| Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
+| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`), Material Library + Assign |
+| any node(s) selected | Create Vop / Wrangle, Create Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
 | several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
 | cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |

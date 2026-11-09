@@ -8,14 +8,6 @@ from pathlib import Path
 
 import hou
 
-_modifiers: frozenset[str] = frozenset()
-
-
-def modifiers() -> frozenset[str]:
-    """Keys held when the running script's button was clicked: {'shift', 'ctrl', 'alt'} (ctrl is Cmd on macOS).
-    Scripts read it as hotbox.modifiers()."""
-    return _modifiers
-
 
 @dataclass
 class ScriptError:
@@ -43,20 +35,17 @@ def scriptTraceback(e: BaseException) -> str:
     return "".join(traceback.format_exception(type(e), e, tb))
 
 
-def runScript(path: Path, label: str = "", modifiers=(), on_error=None) -> bool:
+def runScript(path: Path, label: str = "", on_error=None) -> bool:
     """Execute a script file as if it was run directly. Returns True when it finished without errors.
 
     - clean namespace with __name__ == "__main__" (scripts don't see HotBox internals)
     - one undo step for everything the script did
     - sys.exit() in a script just stops it, errors are printed and shown in the status bar
       instead of escaping into the Qt event loop; on_error(ScriptError) is called too (the error window)
-    - modifiers: keys held on the click, hotbox.modifiers() while the script runs
     """
-    global _modifiers
     path = Path(path)
     filepath = path.as_posix()
     scope = {"__name__": "__main__", "__file__": filepath, "__builtins__": builtins}
-    _modifiers = frozenset(modifiers)
     try:
         code = compile(path.read_text(encoding="utf-8"), filepath, "exec")
         with hou.undos.group(f"HotBox: {label or path.stem}"):
@@ -75,8 +64,6 @@ def runScript(path: Path, label: str = "", modifiers=(), on_error=None) -> bool:
             except Exception:  # noqa: BLE001  the error window must not hide the original error
                 traceback.print_exc()
         return False
-    finally:
-        _modifiers = frozenset()
     return True
 
 

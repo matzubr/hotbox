@@ -36,8 +36,7 @@ def start():
 
 
 class HotBox(QWidget):
-    """Keys: hotkeys run their script, Shift shows the #shiftlabel texts (Shift+click runs that variant),
-    Tab starts search (type, Enter runs the first match, Esc/Tab ends it), Esc and ` close."""
+    """Keys: hotkeys run their script, Tab starts search (type, Enter runs the first match, Esc/Tab ends it), Esc and ` close."""
 
     # Opening: buttons grow in from their centers, the nearer to the cursor the sooner
     APPEAR_DELAY_PER_PX = 0.55  # ms of delay per pixel between the cursor and a button center
@@ -64,7 +63,6 @@ class HotBox(QWidget):
         self._closeAnimated = False  # it has played: a close() now really closes
         self._closeTimer = QTimer(self)
         self._closeTimer.setSingleShot(True)
-        self._modifiers: frozenset[str] = frozenset()
         self.searchText: str | None = None  # None: not searching
         self._searchMatch = None
 
@@ -163,8 +161,6 @@ class HotBox(QWidget):
         actions[self.script_manager_button] = self.startManager
         for button, action in actions.items():
             button.clicked.connect(lambda checked=False, b=button, a=action: self.trigger(b, a))
-        if QGuiApplication.queryKeyboardModifiers() & Qt.ShiftModifier:  # opened with Shift held
-            self.setShifted(True)
 
     def recentRow(self, library, data):
         """Row of the last run scripts that make sense here (shown in this context), None if there are none"""
@@ -193,7 +189,6 @@ class HotBox(QWidget):
         if self._triggered:
             return
         self._triggered = True
-        self._modifiers = widgets.modifierNames(QGuiApplication.keyboardModifiers())
 
         def finish():
             self._closeAnimated = True
@@ -213,8 +208,7 @@ class HotBox(QWidget):
             runner.status(f"HotBox: {script.relpath}: {script.error}", error=True)
             return
         settings.addRecent(self.mode, script.relpath)
-        label = (script.shiftLabel if "shift" in self._modifiers else None) or script.label
-        runner.runScript(script.runPath, label=label, modifiers=self._modifiers,
+        runner.runScript(script.runPath, label=script.label,
                          on_error=lambda error: errors.showScriptError(error, self.lib_roots))
 
     # --- keys ---------------------------------------------------------------------------------------------------
@@ -228,9 +222,6 @@ class HotBox(QWidget):
 
     def keyPressEvent(self, event):
         key = int(event.key())
-        if key == int(Qt.Key_Shift):
-            self.setShifted(True)
-            return
         if key in self.SEARCH_KEYS:
             self.setSearch(None if self.searchText is not None else "")
             return
@@ -247,16 +238,6 @@ class HotBox(QWidget):
             self.trigger(button, lambda s=button.script: self.runScript(s))
             return
         super().keyPressEvent(event)
-
-    def keyReleaseEvent(self, event):
-        if int(event.key()) == int(Qt.Key_Shift):
-            self.setShifted(False)
-            return
-        super().keyReleaseEvent(event)
-
-    def setShifted(self, shifted: bool):
-        for button in self.script_buttons:
-            button.setShifted(shifted)
 
     # --- search -------------------------------------------------------------------------------------------------
 
@@ -278,8 +259,7 @@ class HotBox(QWidget):
         self.searchText = text
         match = None
         for button in self.script_buttons:
-            labels = f"{button.script.label} {button.script.shiftLabel or ''}"
-            matches = not text or scripts.matchesSearch(labels, text)
+            matches = not text or scripts.matchesSearch(button.script.label, text)
             button.setDimmed(not matches)
             if matches and text and match is None:
                 match = button

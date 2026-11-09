@@ -24,12 +24,6 @@ The same tool in another mode/context: a file with only a header and a reference
 runs the referenced script (path inside lib/). The reference takes the label, colors, icon and group of the
 target, its own header overrides them. The hotkey is not inherited: hotkeys are chosen per context.
 
-Shift: a script can do something else when its button is clicked with Shift (hotbox.modifiers()), and
-
-    #shiftlabel:Object Merge Absolute
-
-is the button text while Shift is held.
-
 Several libraries: HOTBOX_PATH lists more lib folders (';' separated, ':' too on Linux/macOS), searched in
 order before the built-in lib/. A script in an earlier folder hides the one with the same mode/relpath in a
 later folder; #ref targets are looked up the same way. Personal and studio scripts live outside the tool folder.
@@ -49,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MODES = ("all", "multiple", "single")
-SETTINGS = ("ref", "label", "shiftlabel", "group", "package", "textcolor", "buttoncolor", "icon", "link", "hotkey")
+SETTINGS = ("ref", "label", "group", "package", "textcolor", "buttoncolor", "icon", "link", "hotkey")
 PATH_ENV = "HOTBOX_PATH"
 NOT_INHERITED = ("ref", "hotkey")
 MAX_REF_DEPTH = 8
@@ -110,10 +104,6 @@ class Script:
     @property
     def label(self) -> str:
         return self.settings.get("label") or Path(self.relpath).stem
-
-    @property
-    def shiftLabel(self) -> str | None:
-        return self.settings.get("shiftlabel") or None
 
     @property
     def hotkey(self) -> str | None:
@@ -448,14 +438,6 @@ def hotkeyConflicts(scripts: list[Script], script: Script, hotkey: str) -> list[
         for other in scripts
         if other.relpath != script.relpath and visibleTogether(script, other) and (other.hotkey or "").lower() == hotkey
     ]
-
-
-# Shift + digit row -> the digit, US and Russian layouts: Shift+1 still finds the hotkey '1'
-SHIFTED_TO_KEY = {**dict(zip("!@#$%^&*()", "1234567890", strict=True)), '"': "2", "№": "3", ";": "4", ":": "6", "?": "7"}
-
-
-def unshiftedKey(text: str) -> str | None:
-    return SHIFTED_TO_KEY.get(text) if text else None
 
 
 def matchesSearch(label: str, query: str) -> bool:
