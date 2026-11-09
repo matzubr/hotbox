@@ -192,3 +192,100 @@ def buildChain(topnet, wedge, node) -> list[str]:
     merge.setDisplayFlag(True)
     merge.setRenderFlag(True)
     return problems
+
+
+# --- loading the written wedges -----------------------------------------------------------------------------------
+
+_WEDGE_TOKEN = re.compile(r"`?@wedgeindex`?")
+_FRAME_TOKEN = re.compile(r"\$\{?F\d*\}?|\$FF")
+_WEDGE_MARK, _FRAME_MARK = "HOTBOXWEDGEMARK", "HOTBOXFRAMEMARK"
+
+
+def outputFileParm(rop):
+    """Output File of a ROP Geometry Output TOP"""
+    tuple_ = parmByLabel(rop, "Output File", kinds=("String",))
+    return tuple_[0] if tuple_ is not None else None
+
+
+def wedgePath(raw: str, index: int) -> str:
+    """The output path of one wedge: `@wedgeindex` replaced, $HIP / $F4 kept"""
+    return _WEDGE_TOKEN.sub(str(index), raw)
+
+
+def wedgeIndicesOnDisk(raw: str, expand=None) -> list[int]:
+    """Wedge indices that have files on disk for the output path (any frame)"""
+    import glob
+
+    expand = expand or hou.text.expandString
+    marked = _FRAME_TOKEN.sub(_FRAME_MARK, _WEDGE_TOKEN.sub(_WEDGE_MARK, raw))
+    expanded = expand(marked).replace("\\", "/")
+    if _WEDGE_MARK not in expanded:
+        return []
+    pattern = re.escape(expanded).replace(_WEDGE_MARK, r"(\d+)").replace(_FRAME_MARK, r"-?\d+")
+    regex = re.compile(pattern + "$")
+    found = set()
+    for path in glob.glob(expanded.replace(_WEDGE_MARK, "*").replace(_FRAME_MARK, "*")):
+        match = regex.match(path.replace("\\", "/"))
+        if match:
+            found.add(int(match.group(1)))
+    return sorted(found)
+
+
+def upstreamWedgeCount(rop) -> int | None:
+    """Wedge Count of the first Wedge above the ROP"""
+    stack, seen = list(rop.inputs()), set()
+    while stack:
+        node = stack.pop(0)
+        if node is None or node.path() in seen:
+            continue
+        seen.add(node.path())
+        if node.type().name() == "wedge":
+            count = parmByLabel(node, "Wedge Count")
+            return int(count[0].eval()) if count is not None else None
+        stack.extend(node.inputs())
+    return None
+
+
+def loadWedges(rop) -> list:
+    """File SOP per written wedge (the ones on disk, else Wedge Count of them) and a Switch to flip through them,
+    in the SOP network the TOP network is in (else a new geo object). Returns the file nodes."""
+    parm = outputFileParm(rop)
+    if parm is None:
+        raise ValueError(f"{rop.name()} has no Output File")
+    raw = parm.unexpandedString()
+    if not _WEDGE_TOKEN.search(raw):
+        indices = [None]
+    else:
+        indices = wedgeIndicesOnDisk(raw) or list(range(upstreamWedgeCount(rop) or 0))
+        if not indices:
+            raise ValueError("No wedges on disk and no Wedge Count above the ROP")
+
+    topnet = rop.parent()
+    network = topnet.parent()
+    if network.childTypeCategory() != hou.sopNodeTypeCategory():
+        network = hou.node("/obj").createNode("geo", f"wedges_{rop.name()}")
+        start = hou.Vector2(0, 0)
+    else:
+        start = topnet.position() + hou.Vector2(3, 0)
+
+    from .nodes import freePosition
+
+    files = []
+    for k, index in enumerate(indices):
+        name = rop.name() if index is None else f"wedge_{index}"
+        node = network.createNode("file", name)
+        node.parm("file").set(raw if index is None else wedgePath(raw, index))
+        wanted = start + hou.Vector2(k * 2, 0)
+        node.setPosition(freePosition(network, wanted, node.size(), ignore=[node]))
+        files.append(node)
+    if len(files) > 1:
+        switch = network.createNode("switch", f"switch_{rop.name()}")
+        for k, node in enumerate(files):
+            switch.setInput(k, node)
+        lowest = min(n.position()[1] for n in files)
+        middle = sum(n.position()[0] for n in files) / len(files)
+        switch.setPosition(freePosition(network, hou.Vector2(middle, lowest - 1.5), switch.size(), ignore=[switch]))
+        switch.setCurrent(True, clear_all_selected=True)
+    else:
+        files[0].setCurrent(True, clear_all_selected=True)
+    return files

@@ -421,3 +421,48 @@ def test_wedge_chain_geometry_import_wedge_rop(hou, vec, monkeypatch):
     output.set.assert_called_once_with(("$HIP/geo/wedge/OUT/OUT.`@wedgeindex`.$F4.bgeo.sc",))
     rop.createNode.assert_called_once_with("object_merge", "IMPORT_OUT")
     rop.createNode.return_value.parm.return_value.set.assert_called_once_with("/obj/geo1/OUT")
+
+
+def test_wedge_indices_found_on_disk(tmp_path):
+    folder = tmp_path / "geo" / "wedge" / "OUT"
+    folder.mkdir(parents=True)
+    for index in (0, 1, 3):
+        for frame in (1, 2):
+            (folder / f"OUT.{index}.{frame:04d}.bgeo.sc").touch()
+    (folder / "OUT.x.0001.bgeo.sc").touch()
+    raw = "$HIP/geo/wedge/OUT/OUT.`@wedgeindex`.$F4.bgeo.sc"
+    expand = lambda text: text.replace("$HIP", tmp_path.as_posix())
+    assert wedge.wedgeIndicesOnDisk(raw, expand) == [0, 1, 3]
+    assert wedge.wedgePath(raw, 3) == "$HIP/geo/wedge/OUT/OUT.3.$F4.bgeo.sc"
+    assert wedge.wedgeIndicesOnDisk("$HIP/static.bgeo.sc", expand) == []
+
+
+def test_load_wedges_makes_file_nodes_and_a_switch(hou, vec, monkeypatch):
+    sop = object()
+    monkeypatch.setattr(hou, "sopNodeTypeCategory", lambda: sop, raising=False)
+    monkeypatch.setattr(wedge, "wedgeIndicesOnDisk", lambda raw: [0, 2])
+    output = _tuple("sopoutput", "Output File", "String")
+    output.__getitem__ = lambda self, i: output_parm
+    output_parm = MagicMock()
+    output_parm.unexpandedString.return_value = "$HIP/w/OUT.`@wedgeindex`.$F4.bgeo.sc"
+    rop = MagicMock()
+    rop.parmTuples.return_value = [output]
+    network = rop.parent.return_value.parent.return_value
+    network.childTypeCategory.return_value = sop
+    network.children.return_value = []
+    rop.parent.return_value.position.return_value = Vec(0, 0)
+    created = []
+
+    def createNode(node_type, name):
+        node = _item(f"/obj/geo1/{name}", 0, 0)
+        node.type_ = node_type
+        created.append(node)
+        return node
+
+    network.createNode.side_effect = createNode
+    files = wedge.loadWedges(rop)
+    assert [n.name() for n in files] == ["wedge_0", "wedge_2"]
+    files[1].parm.return_value.set.assert_called_with("$HIP/w/OUT.2.$F4.bgeo.sc")
+    switch = created[-1]
+    assert switch.type_ == "switch"
+    switch.setInput.assert_any_call(1, files[1])
