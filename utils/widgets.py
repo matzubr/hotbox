@@ -163,6 +163,7 @@ class Button(QPushButton):
     - hover: a white wave spreads from the cursor, the button gets lighter and bigger (text too)
     - press (playPress): grows and fades out
     - appear (playAppear): grows from nothing at its center with a small spring overshoot
+    - disappear (playDisappear): the reverse, a small swell and shrinks to nothing
 
     While it is zoomed, the window's AnimationOverlay paints it on top of everything, so the zoom is not cut
     by the widget and buttons don't need empty space around them.
@@ -175,6 +176,8 @@ class Button(QPushButton):
     HOVER_MS, RIPPLE_MS, PRESS_MS = 150, 450, 220
     APPEAR_MS = 340
     APPEAR_OVERSHOOT = 1.6  # spring: how far past full size the button grows before settling
+    DISAPPEAR_MS = 200
+    DISAPPEAR_OVERSHOOT = 1.2  # swell before shrinking
     ICON_SIZE = 28
     DIM_OPACITY = 0.22  # buttons that don't match the search
 
@@ -198,6 +201,12 @@ class Button(QPushButton):
         self._appearTimer = QTimer(self)  # child: never fires after the button is gone
         self._appearTimer.setSingleShot(True)
         self._appearTimer.timeout.connect(lambda: self._run(self._appearAnimation, 0.0, 1.0))
+        anticipation = QEasingCurve(QEasingCurve.InBack)
+        anticipation.setOvershoot(self.DISAPPEAR_OVERSHOOT)
+        self._disappearAnimation = self._animation(self.DISAPPEAR_MS, "appear", anticipation)
+        self._disappearTimer = QTimer(self)
+        self._disappearTimer.setSingleShot(True)
+        self._disappearTimer.timeout.connect(lambda: self._run(self._disappearAnimation, self.appear, 0.0))
 
         self.setButtonIcon(icon)
         self.updateColors(buttonColor, textColor)
@@ -354,6 +363,13 @@ class Button(QPushButton):
         self._appearAnimation.stop()
         self.appear = 1.0
         self.repaint_()
+
+    def playDisappear(self, delay_ms: int = 0):
+        """Shrink to nothing at the center after the delay (from wherever the appear animation is)"""
+        self._appearTimer.stop()
+        self._appearAnimation.stop()
+        self._hoverAnimation.stop()
+        self._disappearTimer.start(max(0, int(delay_ms)))
 
     def startHover(self, pos: QPointF | None = None):
         self.ripplePos = pos if pos is not None else self.visualRect().center()
@@ -576,7 +592,7 @@ class ScriptGrid(QWidget):
 def paintGroupFrame(painter: QPainter, frame: QRectF, name: str, buttons=()) -> None:
     """Translucent rounded frame with a caption: #group blocks and the Recent row.
     While its buttons appear, the frame fades in with the first of them."""
-    shown = max((min(1.0, max(0.0, b.appear)) for b in buttons), default=1.0)
+    shown = max((min(1.0, max(0.0, b.appear)) * (1.0 - b.press) for b in buttons), default=1.0)
     if shown <= 0:
         return
     painter.save()

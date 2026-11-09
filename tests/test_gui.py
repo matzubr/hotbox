@@ -178,7 +178,9 @@ def test_escape_closes(houdini, hou, library, monkeypatch):
 
     box = _hotbox(monkeypatch, hou, library)
     QTest.keyClick(box, Qt.Key_Escape)
-    assert not box.isVisible()
+    assert box.isVisible()  # the closing animation plays first
+    QTest.qWait(box.FADE_OUT + 150)
+    assert not shiboken6.isValid(box) or not box.isVisible()
 
 
 def test_hotbox_stays_on_screen(houdini, hou, library, monkeypatch, qapp):
@@ -338,6 +340,7 @@ def test_click_between_buttons_closes(houdini, hou, library, monkeypatch):
     assert grid.childAt(gap) is None
 
     QTest.mouseClick(grid, Qt.LeftButton, pos=gap)
+    QTest.qWait(box.FADE_OUT + 150)
 
     assert not shiboken6.isValid(box) or not box.isVisible()
     ran.assert_not_called()
@@ -534,4 +537,27 @@ def test_buttons_grow_in_from_the_cursor(houdini, hou, library, monkeypatch, qap
     assert all(b.appear == 1.0 and not b.isAnimated() for b in buttons)
     assert all(value > 1.0 for value in peak.values())  # the spring overshoots before settling
     box.finishAppear()
+    box.close()
+
+
+def test_closing_shrinks_buttons_farthest_first(houdini, hou, library, monkeypatch, qapp):
+    from hotbox.utils.widgets import Button
+    from PySide6.QtTest import QTest
+
+    box = _hotbox(monkeypatch, hou, library)
+    box.finishAppear()
+    buttons = box.findChildren(Button)
+    origin = box.central_button.mapTo(box, box.central_button.rect().center())
+    closed = MagicMock()
+    box.playDisappear(closed, origin=origin)
+
+    delays = {b: b._disappearTimer.remainingTime() for b in buttons}
+    distance = {b: (b.mapTo(box, b.rect().center()) - origin).manhattanLength() for b in buttons}
+    assert delays[box.central_button] == max(delays.values())  # at the cursor: last
+    assert delays[max(buttons, key=distance.get)] <= 1  # farthest: right away
+
+    QTest.qWait(box.FADE_OUT + 150)
+    assert all(b.appear == 0 and b.scale() == 0 for b in buttons)
+    closed.assert_called_once()
+    box._closeAnimated = True
     box.close()

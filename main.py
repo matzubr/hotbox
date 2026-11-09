@@ -17,12 +17,11 @@ from .utils import errors, manager, runner, scripts, settings, utility, widgets
 from .utils.qt import (
     QCursor,
     QDesktopServices,
-    QEasingCurve,
     QEvent,
     QGuiApplication,
     QPoint,
-    QPropertyAnimation,
     Qt,
+    QTimer,
     QUrl,
     QVBoxLayout,
     QWidget,
@@ -43,7 +42,10 @@ class HotBox(QWidget):
     # Opening: buttons grow in from their centers, the nearer to the cursor the sooner
     APPEAR_DELAY_PER_PX = 0.55  # ms of delay per pixel between the cursor and a button center
     APPEAR_MAX_DELAY = 260  # ms: far buttons don't wait longer than this
-    FADE_OUT = widgets.Button.PRESS_MS  # the menu fades together with the pressed button
+    # Closing is the reverse: the farthest buttons shrink first, the ones at the cursor last
+    DISAPPEAR_DELAY_PER_PX = 0.3
+    DISAPPEAR_MAX_DELAY = 140
+    FADE_OUT = max(widgets.Button.PRESS_MS, DISAPPEAR_MAX_DELAY + widgets.Button.DISAPPEAR_MS)  # whole closing, ms
     SEARCH_KEYS = (int(Qt.Key_Tab), int(Qt.Key_Backtab))
 
     def __init__(self, lib_dir: Path | None = None):
@@ -58,6 +60,10 @@ class HotBox(QWidget):
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self._triggered = False
+        self._closing = False  # the closing animation is playing
+        self._closeAnimated = False  # it has played: a close() now really closes
+        self._closeTimer = QTimer(self)
+        self._closeTimer.setSingleShot(True)
         self._modifiers: frozenset[str] = frozenset()
         self.searchText: str | None = None  # None: not searching
         self._searchMatch = None
@@ -69,16 +75,6 @@ class HotBox(QWidget):
         self.show()
         self.playAppear()
 
-    def _fade(self, start: float, end: float, duration: int, finished=None):
-        self._fadeAnimation = QPropertyAnimation(self, b"windowOpacity", self)
-        self._fadeAnimation.setDuration(duration)
-        self._fadeAnimation.setStartValue(start)
-        self._fadeAnimation.setEndValue(end)
-        self._fadeAnimation.setEasingCurve(QEasingCurve.OutCubic)
-        if finished is not None:
-            self._fadeAnimation.finished.connect(finished)
-        self._fadeAnimation.start()
-
     def playAppear(self, origin: QPoint | None = None):
         """Every button grows in from its center with a spring; the farther from the cursor, the later.
         origin: point in hotbox coordinates the wave starts from (default: the cursor)."""
@@ -89,6 +85,38 @@ class HotBox(QWidget):
             center = button.mapTo(self, button.rect().center())
             distance = math.hypot(center.x() - origin.x(), center.y() - origin.y())
             button.playAppear(min(self.APPEAR_MAX_DELAY, distance * self.APPEAR_DELAY_PER_PX))
+
+    def playDisappear(self, finished, skip=None, origin: QPoint | None = None):
+        """Reverse of playAppear: buttons shrink to their centers, the farthest from the cursor first.
+        skip: the pressed button (it plays its own press animation). finished() runs when all are gone."""
+        self.layout().activate()
+        if origin is None:
+            origin = self.mapFromGlobal(QCursor.pos())
+        buttons = [b for b in self.findChildren(widgets.Button) if b is not skip]
+        delays = {}
+        for button in buttons:
+            center = button.mapTo(self, button.rect().center())
+            distance = math.hypot(center.x() - origin.x(), center.y() - origin.y())
+            delays[button] = min(self.DISAPPEAR_MAX_DELAY, distance * self.DISAPPEAR_DELAY_PER_PX)
+        latest = max(delays.values(), default=0)
+        for button, delay in delays.items():
+            button.playDisappear(latest - delay)
+        self._closeTimer.timeout.connect(finished)
+        self._closeTimer.start(int(max(latest + widgets.Button.DISAPPEAR_MS, widgets.Button.PRESS_MS if skip else 0)))
+
+    def closeEvent(self, event):
+        """Any close (Esc, a click outside or between buttons, the central button) plays the closing animation first"""
+        if self._closeAnimated or not self.isVisible():
+            super().closeEvent(event)
+            return
+        event.ignore()
+        if not self._closing:
+            self._closing = True
+            self.playDisappear(self._closeNow)
+
+    def _closeNow(self):
+        self._closeAnimated = True
+        self.close()
 
     def finishAppear(self):
         """All buttons at full size now (screenshots, tests)"""
@@ -157,7 +185,7 @@ class HotBox(QWidget):
         super().resizeEvent(event)
 
     def trigger(self, button, action=None):
-        """Pressed button grows and fades out, the menu fades out with it, then the action runs.
+        """Pressed button grows and fades out, the other buttons shrink away (closing animation), then the action runs.
 
         The hotbox is closed before the action: scripts open dialogs, select nodes in the viewport, etc.
         Only the first trigger counts.
@@ -168,6 +196,7 @@ class HotBox(QWidget):
         self._modifiers = widgets.modifierNames(QGuiApplication.keyboardModifiers())
 
         def finish():
+            self._closeAnimated = True
             self.hide()
             try:
                 if action is not None:
@@ -175,8 +204,9 @@ class HotBox(QWidget):
             finally:
                 self.close()
 
+        self._closing = True
         button.playPress()
-        self._fade(self.windowOpacity(), 0.0, self.FADE_OUT, finish)
+        self.playDisappear(finish, skip=button)
 
     def runScript(self, script):
         if script.runPath is None:

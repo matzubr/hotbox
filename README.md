@@ -38,7 +38,8 @@ first match, `Esc` or `Tab` ends the search.
 
 Animations: on opening the buttons grow in from their centers with a small spring, starting at the cursor and
 spreading outwards (farther buttons come a bit later). On hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
-On click or hotkey the button grows and fades out while the whole menu fades out, then the script runs.
+Closing plays it in reverse: the buttons swell a little and shrink to their centers, the farthest from the cursor
+first. On click or hotkey the pressed button grows and fades out while the others shrink away, then the script runs.
 
 ## Adding a script
 
