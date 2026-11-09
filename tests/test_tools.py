@@ -363,3 +363,41 @@ def test_snap_keeps_nudged_items_in_place():
     nudge = layout.BODY_NUDGE
     rect = (-0.5 + nudge[0], -0.15, 1.0, 0.3)
     assert layout.snapRects([rect], [], (2.0, 1.0), nudge=nudge) == [pytest.approx(rect[:2])]
+
+
+def _tuple(name, label, kind="Float"):
+    t = MagicMock()
+    t.name.return_value = name
+    t.parmTemplate.return_value.label.return_value = label
+    t.parmTemplate.return_value.type.return_value.name.return_value = kind
+    return t
+
+
+def test_wedge_target_parameter_turns_on_its_checkbox():
+    checkbox, field = _tuple("exportchannel2", "", "Toggle"), _tuple("channel2", "Target Parameter", "String")
+    other = _tuple("channel1", "Target Parameter", "String")
+    wedge_node = MagicMock()
+    wedge_node.parmTuples.return_value = [other, checkbox, field]
+    assert wedge.setTargetParameter(wedge_node, 2, "/obj/geo1/box1/sizex")
+    field.set.assert_called_once_with(("/obj/geo1/box1/sizex",))
+    checkbox.set.assert_called_once_with((1,))
+    other.set.assert_not_called()
+
+
+def test_wedge_overwrite_toggle_and_connection(vec):
+    overwrite = _tuple("overwritetarget", "Overwrite Target Parameter on  Work Item Selection", "Toggle")
+    node = MagicMock()
+    node.parmTuples.return_value = [overwrite]
+    assert wedge.setToggle(node, wedge.OVERWRITE_LABEL)
+    overwrite.set.assert_called_once_with((1,))
+
+    wedge_node, scheduler, importer = MagicMock(), MagicMock(), MagicMock()
+    scheduler.inputs.return_value = importer.inputs.return_value = []
+    scheduler.type.return_value.maxNumInputs.return_value = 0
+    importer.type.return_value.maxNumInputs.return_value = 1
+    importer.position.return_value = Vec(0, 0)
+    topnet = MagicMock()
+    topnet.children.return_value = [scheduler, wedge_node, importer]
+    wedge.connectToWedge(topnet, wedge_node)
+    importer.setInput.assert_called_once_with(0, wedge_node)
+    scheduler.setInput.assert_not_called()

@@ -88,11 +88,59 @@ def buildWedge(parms, count: int) -> tuple:
         setByLabel("Attribute Name", attributeName(parm), i, kinds=("String",))
         range_label = next((label for label in ("Start/End", "Range") if parmByLabel(wedge, label, i)), "Start/End")
         setByLabel(range_label, (value, end), i)
-        toggles = [t for t in wedge.parmTuples() if t.parmTemplate().label() == "Target Parameter"
-                   and _instance(t.name()) == i]
-        for tuple_ in toggles:
-            kind = tuple_.parmTemplate().type().name()
-            tuple_.set((1,) if kind == "Toggle" else (parm.path(),))
-        if not toggles:
-            problems.append(f"Target Parameter #{i} = {parm.path()}")
+        if not setTargetParameter(wedge, i, parm.path()):
+            problems.append(f"Target Parameter #{i} = {parm.path()} (turned on)")
+    if not setToggle(wedge, OVERWRITE_LABEL):
+        problems.append(f"{OVERWRITE_LABEL}: on")
+    connectToWedge(topnet, wedge)
     return wedge, problems
+
+
+OVERWRITE_LABEL = "Overwrite Target Parameter on Work Item Selection"
+
+
+def _isToggle(tuple_) -> bool:
+    return tuple_.parmTemplate().type().name() == "Toggle"
+
+
+def setToggle(node, label: str) -> bool:
+    """Turn on the toggle with the label (case and spaces don't matter)"""
+    wanted = " ".join(label.lower().split())
+    for tuple_ in node.parmTuples():
+        if _isToggle(tuple_) and " ".join(tuple_.parmTemplate().label().lower().split()) == wanted:
+            tuple_.set((1,))
+            return True
+    return False
+
+
+def setTargetParameter(wedge, instance: int, path: str) -> bool:
+    """Target Parameter of the wedge attribute: the path into its field and its checkbox on.
+    The checkbox is a separate toggle in front of the field (often without a label of its own)."""
+    tuples = list(wedge.parmTuples())
+    field = toggle = None
+    for k, tuple_ in enumerate(tuples):
+        if tuple_.parmTemplate().label() != "Target Parameter" or _instance(tuple_.name()) != instance:
+            continue
+        if _isToggle(tuple_):
+            toggle = tuple_
+        elif field is None:
+            field = tuple_
+            before = tuples[k - 1] if k else None
+            if toggle is None and before is not None and _isToggle(before) and _instance(before.name()) == instance:
+                toggle = before
+    if field is not None:
+        field.set((path,))
+    if toggle is not None:
+        toggle.set((1,))
+    return field is not None and toggle is not None
+
+
+def connectToWedge(topnet, wedge) -> None:
+    """Nodes the TOP network was created with (Geometry Import...) get their work items from the Wedge"""
+    for child in topnet.children():
+        if child == wedge or child.inputs() or child.type().maxNumInputs() == 0:
+            continue  # schedulers have no inputs
+        child.setInput(0, wedge)
+        wedge.setPosition(child.position() + hou.Vector2(0, 1.5))
+        child.setDisplayFlag(True)
+        break

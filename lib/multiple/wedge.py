@@ -5,7 +5,8 @@
 #icon:TOP_wedge
 
 # A TOP network with a Wedge for the parameters you pick on the selected nodes:
-# from the current value to twice it, the Wedge pushes the values into the parameters when it cooks
+# from the current value to twice it. Target Parameter and "Overwrite Target Parameter on Work Item Selection" are on:
+# picking a work item shows its values in the node. Nodes the TOP network comes with are wired after the Wedge
 import hou
 from hotbox.common import panes, wedge
 
