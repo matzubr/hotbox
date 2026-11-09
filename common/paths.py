@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import re
 import sys
 
 import hou
@@ -185,3 +186,56 @@ def reloadFileNodes() -> list:
                 reloaded.append(node)
                 break
     return reloaded
+
+
+# --- the file of one node -----------------------------------------------------------------------------------------
+
+MAIN_FILE_PARMS = ("sopoutput", "file", "filename", "fileName", "lopoutput", "copoutput", "picture", "vm_picture")
+IMAGE_SUFFIXES = (".exr", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".tga", ".pic", ".rat", ".hdr", ".dpx", ".cin",
+                  ".bmp", ".sgi", ".rgb")
+
+
+def mainFileParm(node):
+    """The parameter with the node's file: the cache / output / read path (the first one that is set)"""
+    names = list(MAIN_FILE_PARMS) + fileParms(node, include_hidden=True)
+    for name in dict.fromkeys(names):
+        parm = node.parm(name)
+        if parm is None:
+            continue
+        try:
+            value = parm.evalAsString()
+        except hou.OperationFailed:
+            continue
+        if value and not value.startswith(NOT_FILES):
+            return parm
+    return None
+
+
+def cacheFiles(parm) -> list[str]:
+    """Files on disk of the parameter: every frame of a sequence, or the one file"""
+    from . import frames
+
+    pattern = frames.sequencePattern(parm)
+    if pattern is None:
+        path = parm.evalAsString()
+        return [path] if os.path.isfile(path) else []
+    folder, prefix, suffix = pattern
+    regex = re.compile(re.escape(prefix) + r"-?\d+" + re.escape(suffix) + "$")
+    try:
+        names = sorted(os.listdir(folder or "."))
+    except OSError:
+        return []
+    return [os.path.join(folder, name) for name in names if regex.match(name)]
+
+
+def formatSize(size: float) -> str:
+    """1536 -> '1.5 KB'"""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def isImageFile(path: str) -> bool:
+    return os.path.splitext(path)[1].lower() in IMAGE_SUFFIXES

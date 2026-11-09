@@ -150,6 +150,19 @@ are in packages: turn them on in the gear menu if you need them.
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
 | cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |
 | alembic, alembicarchive, filecache, file | Frame Range: scene and playback range from the Alembic animation or the sequence on disk |
+| any node(s) selected | **Network**: Snap to Grid (onto the Network Editor grid, never on top of another node) |
+
+Tools seen in other Houdini libraries come as packages named after the library (all off by default,
+[AwesomeHoudini](https://github.com/wyhinton/AwesomeHoudini) lists them). The code here is HotBox's own:
+
+| Package | Scripts |
+|---|---|
+| `qLib` | Recover Crash, Jump to Clipboard Path, **Viewport**: Templates / Guides / Background / Time Dependency, **Select**: Bypassed / Time-Dependent / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
+| `Aelib` | Save Incremental, Open HIP Folder, Lock Camera (cam, hlight) |
+| `LV-Tools` | Make Space, Wedge (TOP network with a Wedge for picked parameters), Transfer Transform (two objects), Cache Size (filecache) |
+| `BeeHou` | Focus Target (cam: a null that drives the focus distance) |
+| `AutoCacheOut` | Version Up (filecache) |
+| `HelpToComment` | Help to Comment (the help summary as the node comment) |
 
 ### Shared helpers: `common/`
 
@@ -161,6 +174,9 @@ Small pieces several scripts need, split by topic (whole tools stay scripts in `
 | `common/nodes.py` | node paths from the clipboard, Object Merge / Fetch / SOP Import at the cursor, attrib VOP/wrangle under the selection, a free spot for a new node |
 | `common/paths.py` | file parameters of a node and of the scene, `$JOB`/`$FILM` path conversion, missing files, reload of file nodes |
 | `common/frames.py` | frame range of a node: Alembic animation, file sequence on disk, keyframes |
+| `common/layout.py` | Network Editor grid step, snapping to it without overlaps, making space |
+| `common/hipfile.py` | incremental hip names, crash files and backups, opening a folder in Finder / Explorer |
+| `common/wedge.py`, `common/mplay.py` | Wedge TOP for parameters, image sequences in MPlay |
 
 ```python
 from hotbox.common import paths
