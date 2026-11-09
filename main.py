@@ -40,7 +40,9 @@ class HotBox(QWidget):
     """Keys: hotkeys run their script, Shift shows the #shiftlabel texts (Shift+click runs that variant),
     Tab starts search (type, Enter runs the first match, Esc/Tab ends it), Esc and ` close."""
 
-    FADE_IN = 120  # ms
+    # Opening: buttons grow in from their centers, the nearer to the cursor the sooner
+    APPEAR_DELAY_PER_PX = 0.55  # ms of delay per pixel between the cursor and a button center
+    APPEAR_MAX_DELAY = 260  # ms: far buttons don't wait longer than this
     FADE_OUT = widgets.Button.PRESS_MS  # the menu fades together with the pressed button
     SEARCH_KEYS = (int(Qt.Key_Tab), int(Qt.Key_Backtab))
 
@@ -64,8 +66,8 @@ class HotBox(QWidget):
         self.initUI()
         self.adjustSize()
         self.setPositionFromMouse()
-        self.fadeIn()
         self.show()
+        self.playAppear()
 
     def _fade(self, start: float, end: float, duration: int, finished=None):
         self._fadeAnimation = QPropertyAnimation(self, b"windowOpacity", self)
@@ -77,9 +79,21 @@ class HotBox(QWidget):
             self._fadeAnimation.finished.connect(finished)
         self._fadeAnimation.start()
 
-    def fadeIn(self):
-        self.setWindowOpacity(0.0)
-        self._fade(0.0, 1.0, self.FADE_IN)
+    def playAppear(self, origin: QPoint | None = None):
+        """Every button grows in from its center with a spring; the farther from the cursor, the later.
+        origin: point in hotbox coordinates the wave starts from (default: the cursor)."""
+        self.layout().activate()  # final button positions
+        if origin is None:
+            origin = self.mapFromGlobal(QCursor.pos())
+        for button in self.findChildren(widgets.Button):
+            center = button.mapTo(self, button.rect().center())
+            distance = math.hypot(center.x() - origin.x(), center.y() - origin.y())
+            button.playAppear(min(self.APPEAR_MAX_DELAY, distance * self.APPEAR_DELAY_PER_PX))
+
+    def finishAppear(self):
+        """All buttons at full size now (screenshots, tests)"""
+        for button in self.findChildren(widgets.Button):
+            button.finishAppear()
 
     @property
     def mode(self) -> str:

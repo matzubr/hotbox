@@ -27,6 +27,7 @@ from .qt import (
     QRectF,
     QSize,
     Qt,
+    QTimer,
     QVariantAnimation,
     QWidget,
 )
@@ -161,6 +162,7 @@ class Button(QPushButton):
 
     - hover: a white wave spreads from the cursor, the button gets lighter and bigger (text too)
     - press (playPress): grows and fades out
+    - appear (playAppear): grows from nothing at its center with a small spring overshoot
 
     While it is zoomed, the window's AnimationOverlay paints it on top of everything, so the zoom is not cut
     by the widget and buttons don't need empty space around them.
@@ -171,6 +173,8 @@ class Button(QPushButton):
     HOVER_WHITE = 0.10  # background towards white on hover
     RIPPLE_ALPHA = 0.35
     HOVER_MS, RIPPLE_MS, PRESS_MS = 150, 450, 220
+    APPEAR_MS = 340
+    APPEAR_OVERSHOOT = 1.6  # spring: how far past full size the button grows before settling
     ICON_SIZE = 28
     DIM_OPACITY = 0.22  # buttons that don't match the search
 
@@ -182,11 +186,18 @@ class Button(QPushButton):
         self.hover = 0.0
         self.ripple = 1.0  # 1: finished
         self.press = 0.0
+        self.appear = 1.0  # 0: not shown yet, 1: full size (a bit more during the spring)
         self.dimmed = False
         self.ripplePos = QPointF(self.buttonWidth / 2, self.buttonHeight / 2)
         self._hoverAnimation = self._animation(self.HOVER_MS, "hover", QEasingCurve.OutCubic)
         self._rippleAnimation = self._animation(self.RIPPLE_MS, "ripple", QEasingCurve.OutQuad)
         self._pressAnimation = self._animation(self.PRESS_MS, "press", QEasingCurve.OutCubic)
+        spring = QEasingCurve(QEasingCurve.OutBack)
+        spring.setOvershoot(self.APPEAR_OVERSHOOT)
+        self._appearAnimation = self._animation(self.APPEAR_MS, "appear", spring)
+        self._appearTimer = QTimer(self)  # child: never fires after the button is gone
+        self._appearTimer.setSingleShot(True)
+        self._appearTimer.timeout.connect(lambda: self._run(self._appearAnimation, 0.0, 1.0))
 
         self.setButtonIcon(icon)
         self.updateColors(buttonColor, textColor)
@@ -226,6 +237,8 @@ class Button(QPushButton):
 
     def repaint_(self):
         self.update()
+        if self.appear != 1.0 and self.parentWidget() is not None:
+            self.parentWidget().update()  # group frames fade in with their buttons
         overlay = self.overlay()
         if overlay is not None:
             overlay.update()
@@ -267,14 +280,14 @@ class Button(QPushButton):
 
     def scale(self) -> float:
         hover_scale = 1 + (self.HOVER_SCALE - 1) * self.hover
-        return hover_scale + (self.PRESS_SCALE - hover_scale) * self.press
+        return (hover_scale + (self.PRESS_SCALE - hover_scale) * self.press) * max(0.0, self.appear)
 
     def visualRect(self) -> QRectF:
         """The button at rest, in widget coordinates"""
         return QRectF(0, 0, self.buttonWidth, self.buttonHeight)
 
     def isAnimated(self) -> bool:
-        return self.scale() > 1.0005 or self.press > 0 or self.ripple < 1.0
+        return abs(self.scale() - 1) > 0.0005 or self.press > 0 or self.ripple < 1.0 or self.appear < 1.0
 
     def paintEvent(self, event):
         if self.isAnimated() and self.overlay() is not None:
@@ -285,6 +298,8 @@ class Button(QPushButton):
 
     def paintTo(self, painter: QPainter, rect: QRectF):
         """Paint the button with its current animation state into rect (the button at rest)"""
+        if self.scale() < 0.01:
+            return  # not appeared yet
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
@@ -326,6 +341,19 @@ class Button(QPushButton):
         painter.restore()
 
     # --- animation ----------------------------------------------------------------------------------------------
+
+    def playAppear(self, delay_ms: int = 0):
+        """Hidden now, grows in after the delay"""
+        self.appear = 0.0
+        self._appearAnimation.stop()
+        self._appearTimer.start(max(0, int(delay_ms)))
+        self.repaint_()
+
+    def finishAppear(self):
+        self._appearTimer.stop()
+        self._appearAnimation.stop()
+        self.appear = 1.0
+        self.repaint_()
 
     def startHover(self, pos: QPointF | None = None):
         self.ripplePos = pos if pos is not None else self.visualRect().center()
@@ -533,7 +561,7 @@ class ScriptGrid(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         for name, buttons in self.groups:
-            paintGroupFrame(painter, self.groupFrame(buttons), name)
+            paintGroupFrame(painter, self.groupFrame(buttons), name, buttons)
         painter.end()
 
     def keybindings(self) -> dict[int, ScriptButton]:
@@ -545,8 +573,14 @@ class ScriptGrid(QWidget):
         return bindings
 
 
-def paintGroupFrame(painter: QPainter, frame: QRectF, name: str) -> None:
-    """Translucent rounded frame with a caption: #group blocks and the Recent row"""
+def paintGroupFrame(painter: QPainter, frame: QRectF, name: str, buttons=()) -> None:
+    """Translucent rounded frame with a caption: #group blocks and the Recent row.
+    While its buttons appear, the frame fades in with the first of them."""
+    shown = max((min(1.0, max(0.0, b.appear)) for b in buttons), default=1.0)
+    if shown <= 0:
+        return
+    painter.save()
+    painter.setOpacity(shown)
     painter.setPen(Qt.NoPen)
     painter.setBrush(QColor(255, 255, 255, 14))
     painter.drawRoundedRect(frame, 12, 12)
@@ -554,6 +588,7 @@ def paintGroupFrame(painter: QPainter, frame: QRectF, name: str) -> None:
     painter.setPen(QColor(232, 232, 232, 150))
     caption = QRectF(frame.left() + 10, frame.top() + 3, frame.width() - 20, ScriptGrid.CAPTION_HEIGHT)
     painter.drawText(caption, Qt.AlignLeft | Qt.AlignVCenter, name)
+    painter.restore()
 
 
 class RecentRow(QWidget):
@@ -576,7 +611,7 @@ class RecentRow(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        paintGroupFrame(painter, QRectF(self.rect()), self.CAPTION)
+        paintGroupFrame(painter, QRectF(self.rect()), self.CAPTION, self.buttons)
         painter.end()
 
 

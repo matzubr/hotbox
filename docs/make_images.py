@@ -82,12 +82,11 @@ def main():
 
     utility.detectContext = lambda: utility.Context("single", "cam", "cam", None)
     box = hotbox_main.HotBox(lib_dir=Path("lib"))
-    box._fadeAnimation.stop()
-    box.setWindowOpacity(1)
+    box.finishAppear()
     app.processEvents()
     onBackground(box).save((DOCS / "menu.png").as_posix())
 
-    # Animation: hover one button, then move to another
+    # Animation: the buttons grow in from the cursor, then hover one button and move to another
     frames = []
 
     def record(count: int, wait: bool = True):
@@ -99,6 +98,8 @@ def main():
 
     buttons = box.scripts_buttons.buttons
     first, target = buttons[0], buttons[4]
+    box.playAppear(box.central_button.mapTo(box, box.central_button.rect().center()))  # opened at the center button
+    record(16)
     record(4, wait=False)
     first.startHover(QPointF(30, 40))
     record(14)

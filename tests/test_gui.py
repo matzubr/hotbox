@@ -508,3 +508,30 @@ def test_short_label_keeps_the_full_font(houdini):
 
     button = Button("Sop")
     assert button.lines == ["Sop"] and button.labelFont.pointSizeF() == FONT_SIZE
+
+
+def test_buttons_grow_in_from_the_cursor(houdini, hou, library, monkeypatch, qapp):
+    from hotbox.utils.widgets import Button
+    from PySide6.QtTest import QTest
+
+    box = _hotbox(monkeypatch, hou, library)
+    buttons = box.findChildren(Button)
+    origin = box.central_button.mapTo(box, box.central_button.rect().center())
+    box.playAppear(origin)
+    assert all(b.appear == 0 for b in buttons)
+    assert all(b.scale() == 0 and b.isAnimated() for b in buttons)  # nothing painted yet
+
+    delays = {b: b._appearTimer.remainingTime() for b in buttons}
+    nearest = min(buttons, key=lambda b: (b.mapTo(box, b.rect().center()) - origin).manhattanLength())
+    assert delays[nearest] == min(delays.values())
+    assert max(delays.values()) <= box.APPEAR_MAX_DELAY
+
+    peak = {}
+    for _ in range(40):
+        QTest.qWait(20)
+        for b in buttons:
+            peak[b] = max(peak.get(b, 0), b.appear)
+    assert all(b.appear == 1.0 and not b.isAnimated() for b in buttons)
+    assert all(value > 1.0 for value in peak.values())  # the spring overshoots before settling
+    box.finishAppear()
+    box.close()

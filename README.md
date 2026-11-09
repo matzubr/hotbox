@@ -36,7 +36,8 @@ Everything a script does is one undo step.
 first match, `Esc` or `Tab` ends the search.
 **Recent**: a row with the last 4 scripts you ran that fit the current selection/network.
 
-Animations: on hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
+Animations: on opening the buttons grow in from their centers with a small spring, starting at the cursor and
+spreading outwards (farther buttons come a bit later). On hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
 On click or hotkey the button grows and fades out while the whole menu fades out, then the script runs.
 
 ## Adding a script
