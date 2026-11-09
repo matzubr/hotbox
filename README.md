@@ -87,6 +87,8 @@ Save writes the header and the code.
 
 All keys are optional (the label defaults to the file name). `#icon` is a file in `icons/` (`save.svg`) or a
 Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `SOP_null`, `OBJ_camera`, `LOP_fetch`...).
+The grid button next to the Icon field browses them: Houdini's own icons by category (SOP, OBJ, LOP...) and the
+HotBox ones, with search; double click or Choose puts the name into the field.
 The script runs as `__main__`, `sys.exit()` just stops it. When it fails, a window shows the error and the traceback;
 **Open in Script Manager** opens the script with the failing line highlighted in the code panel.
 

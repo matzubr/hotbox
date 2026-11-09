@@ -29,6 +29,7 @@ _SUBMODULES = (
     "utils.frameless",
     "utils.packages",
     "utils.newscript",
+    "utils.iconbrowser",
     "utils.manager",
     "utils.errors",
     "common.panes",

@@ -13,6 +13,7 @@ from . import scripts as script_lib
 from . import settings
 from .editors import ChoiceField, CodeEditor
 from .frameless import RoundedWindow, TitleBar
+from .iconbrowser import IconBrowser
 from .newscript import NewScriptWindow
 from .packages import PackagesWindow
 from .qt import (
@@ -21,12 +22,15 @@ from .qt import (
     QDesktopServices,
     QEasingCurve,
     QGridLayout,
+    QIcon,
     QKeySequence,
     QLabel,
     QLineEdit,
     QListWidget,
     QMessageBox,
+    QPushButton,
     QShortcut,
+    QSize,
     Qt,
     QTextCursor,
     QUrl,
@@ -145,6 +149,18 @@ class ScriptManager(RoundedWindow, QWidget):
         self.button_color_swatch = hou.qt.ColorSwatchButton()
         self.text_color_swatch = hou.qt.ColorSwatchButton()
         self.icon_lineedit = QLineEdit()
+        self.icon_browse_button = QPushButton()
+        self.icon_browse_button.setObjectName("DropDown")
+        self.icon_browse_button.setIcon(QIcon((ICONS_DIR / "grid.svg").as_posix()))
+        self.icon_browse_button.setIconSize(QSize(13, 13))
+        self.icon_browse_button.setFixedSize(QSize(28, 28))
+        self.icon_browse_button.setCursor(Qt.PointingHandCursor)
+        self.icon_browse_button.setToolTip("Browse Houdini and HotBox icons")
+        icon_row = HLayout([self.icon_lineedit, self.icon_browse_button], align=None)
+        icon_row.setContentsMargins(0, 0, 0, 0)
+        icon_row.setSpacing(4)
+        self.icon_field = QWidget()
+        self.icon_field.setLayout(icon_row)
         self.hotkey_lineedit = QLineEdit()
         self.hotkey_lineedit.setPlaceholderText("g, 1, F5...")
         self.file_lineedit = QLineEdit()
@@ -175,7 +191,7 @@ class ScriptManager(RoundedWindow, QWidget):
             ("Package", self.package_field),
             ("Button color", self.button_color_swatch),
             ("Text color", self.text_color_swatch),
-            ("Icon", self.icon_lineedit),
+            ("Icon", self.icon_field),
             ("Hotkey", self.hotkey_lineedit),
         ]
         for row, (text, widget) in enumerate(rows):
@@ -184,7 +200,7 @@ class ScriptManager(RoundedWindow, QWidget):
             form.addWidget(label, row, 0)
             form.addWidget(widget, row, 1)
         icon_hint = QLabel("Ref, Package: Tab completes, the arrow lists existing values · "
-                           "Icon: file in icons/ or a Houdini icon (SOP_null...)")
+                           "Icon: file in icons/ or a Houdini icon (SOP_null...), the grid button browses them")
         icon_hint.setObjectName("Hint")
         icon_hint.setWordWrap(True)
 
@@ -241,6 +257,7 @@ class ScriptManager(RoundedWindow, QWidget):
         self.open_button.clicked.connect(self.openFile)
         self.code_button.clicked.connect(self.toggleCode)
         self.new_button.clicked.connect(self.newScript)
+        self.icon_browse_button.clicked.connect(self.browseIcons)
         QShortcut(QKeySequence.New, self, self.newScript)
         self.updateChoices()
         self.updateScripts()
@@ -554,6 +571,18 @@ class ScriptManager(RoundedWindow, QWidget):
         self.showScript(path)
         self.code_edit.setFocus()
         self.code_edit.moveCursor(QTextCursor.End)
+
+    def browseIcons(self):
+        """Icon browser on the current icon; the chosen name goes into the Icon field"""
+        inherited, _error = self.inherited()
+        current = self.icon_lineedit.text().strip() or inherited.get("icon", "")
+        self.icon_browser = IconBrowser(current=current, stylesheet=bodyStyle(), parent=self)
+        self.icon_browser.chosen.connect(self.icon_lineedit.setText)
+        center = self.mapToGlobal(self.rect().center())
+        self.icon_browser.move(center.x() - self.icon_browser.width() // 2,
+                               center.y() - self.icon_browser.height() // 2)
+        self.icon_browser.show()
+        return self.icon_browser
 
     def openPackages(self):
         """Gear: turn packages on/off; the list greys out scripts of turned off packages"""

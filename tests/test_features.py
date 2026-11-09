@@ -270,3 +270,67 @@ def test_new_script_window_creates_and_manager_shows_it(houdini, tmp_path):
     assert "node = hou.selectedNodes()[0]" in manager.code_edit.toPlainText()
     assert manager._codeOpen > 0 or manager._slide.state()
     manager.close()
+
+
+# --- icon browser -------------------------------------------------------------------------------------------------
+
+@pytest.fixture
+def icons_zip(tmp_path, monkeypatch):
+    import zipfile
+
+    from hotbox.utils import iconbrowser
+
+    path = tmp_path / "houdini" / "config" / "Icons" / "icons.zip"
+    path.parent.mkdir(parents=True)
+    with zipfile.ZipFile(path, "w") as archive:
+        for name in ("SOP/null.svg", "SOP/object_merge.svg", "OBJ/camera.svg", "LOP/fetch.svg", "MISC/python.svg",
+                     "SOP/", "SOP/deeper/skip.svg", "readme.txt", "OBJ/notes.txt"):
+            archive.writestr(name, "" if name.endswith("/") else "<svg/>")
+    monkeypatch.setenv("HFS", (tmp_path).as_posix())
+    iconbrowser.houdiniIconNames.cache_clear()
+    return path
+
+
+def test_houdini_icon_names_from_the_archive(icons_zip):
+    from hotbox.utils import iconbrowser
+
+    assert iconbrowser.houdiniIconsZip() == icons_zip
+    names = iconbrowser.houdiniIconNames(icons_zip)
+    assert names == {"SOP": ["SOP_null", "SOP_object_merge"], "OBJ": ["OBJ_camera"], "LOP": ["LOP_fetch"],
+                     "MISC": ["MISC_python"]}
+    assert iconbrowser.orderedCategories(names) == ["SOP", "OBJ", "LOP", "MISC"]
+    assert iconbrowser.houdiniIconNames(None) == {}
+    assert "save.svg" in iconbrowser.hotboxIconNames()
+
+
+def test_icon_browser_search_and_choose(houdini, icons_zip, library):
+    from hotbox.utils.iconbrowser import IconBrowser
+    from hotbox.utils.manager import ScriptManager
+
+    browser = IconBrowser(current="OBJ_camera")
+    assert browser.categories_list.currentItem().text() == "OBJ"  # opens where the current icon is
+    assert browser.currentName() == "OBJ_camera"
+
+    browser.categories_list.setCurrentRow(browser.categories.index("All"))
+    browser.search_lineedit.setText("merge")
+    assert browser.model.names == ["SOP_object_merge"]
+    browser.search_lineedit.setText("")
+    assert "save.svg" in browser.model.names and "LOP_fetch" in browser.model.names
+    browser.close()
+
+    manager = ScriptManager(lib_folder=library)
+    window = manager.browseIcons()
+    window.select("SOP_null")
+    assert window.choose() == "SOP_null"
+    assert manager.icon_lineedit.text() == "SOP_null"  # into the field; the preview and warnings follow
+    manager.close()
+
+
+def test_icon_browser_without_houdini_icons(houdini, monkeypatch):
+    from hotbox.utils import iconbrowser
+
+    monkeypatch.setattr(iconbrowser, "houdiniIconsZip", lambda: None)
+    browser = iconbrowser.IconBrowser(current="SOP_null")
+    assert browser.categories == ["All", "HotBox"]
+    assert browser.model.names == browser.hotbox
+    browser.close()
