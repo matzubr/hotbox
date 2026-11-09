@@ -39,7 +39,7 @@ from .qt import (
     QWidget,
 )
 from .theme import COLORS, PANEL_RADIUS
-from .widgets import ICONS_DIR, AnimationOverlay, Button, HLayout, buttonFont, keyCode, resolveIcon
+from .widgets import ICONS_DIR, AnimationOverlay, Button, HLayout, buttonFont, keyCode, resolveIcon, setIconFolders
 
 ACTION_SIZE = (130, 36)
 CODE_WIDTH = 560  # px of the code panel when it is out
@@ -114,6 +114,7 @@ class ScriptManager(RoundedWindow, QWidget):
         """lib_folder: a lib folder or the list of them (HOTBOX_PATH order, the built-in lib last)"""
         super().__init__(parent or hou.qt.mainWindow())
         self.roots = script_lib.asRoots(lib_folder)
+        setIconFolders(self.roots)
         self.scripts: list[script_lib.Script] = []
         self._loading = False
         self._codePath: Path | None = None  # file shown in the code panel
@@ -436,7 +437,7 @@ class ScriptManager(RoundedWindow, QWidget):
             messages.append(f"Hotkey '{hotkey}' is also used by: {', '.join(conflicts)}")
         icon = self.icon_lineedit.text().strip()
         if icon and resolveIcon(icon) is None:
-            messages.append(f"No icon '{icon}': not in {ICONS_DIR.name}/ and not a Houdini icon")
+            messages.append(f"No icon '{icon}': not in the icons/ folders and not a Houdini icon")
         return messages
 
     def updateWarnings(self):

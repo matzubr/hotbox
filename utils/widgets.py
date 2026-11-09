@@ -34,6 +34,9 @@ from .qt import (
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
 ICONS_DIR = PACKAGE_DIR / "icons"
+BUILTIN_LIB_DIR = PACKAGE_DIR / "lib"
+ICON_SUFFIXES = (".svg", ".png", ".jpg", ".jpeg")
+_icon_folders: list[Path] = [ICONS_DIR]
 # Static ExtraBold cut: a variable font may render with its thinnest weight in Houdini's Qt
 FONT_FILE = PACKAGE_DIR / "fonts" / "Nunito-ExtraBold.ttf"
 FONT_FAMILY = "Nunito"
@@ -125,6 +128,31 @@ def _eventPos(event) -> QPointF:
     return QPointF(event.position()) if hasattr(event, "position") else QPointF(event.pos())
 
 
+def iconFoldersFor(lib_roots) -> list[Path]:
+    """icons/ inside every HOTBOX_PATH lib folder (first wins), then the built-in hotbox/icons"""
+    builtin = BUILTIN_LIB_DIR.resolve()
+    folders = [Path(root) / "icons" for root in lib_roots if Path(root).resolve() != builtin]
+    return folders + [ICONS_DIR]
+
+
+def setIconFolders(lib_roots) -> None:
+    """Where '#icon:my.svg' files are looked for; set by the hotbox and the Script Manager for their lib folders"""
+    global _icon_folders
+    _icon_folders = iconFoldersFor(lib_roots)
+
+
+def iconFolders() -> list[Path]:
+    return list(_icon_folders)
+
+
+def findIconFile(name: str) -> Path | None:
+    for folder in _icon_folders:
+        path = folder / name
+        if path.is_file():
+            return path
+    return None
+
+
 def resolveIcon(icon) -> QIcon | None:
     """QIcon from a QIcon/QPixmap, a file in icons/ ('dino.svg') or a Houdini icon name ('SOP_null',
     the names node.type().icon() returns). None when there is no such icon."""
@@ -134,8 +162,8 @@ def resolveIcon(icon) -> QIcon | None:
         return QIcon(icon)
     if not icon:
         return None
-    filepath = ICONS_DIR / icon
-    if filepath.is_file():
+    filepath = findIconFile(icon)
+    if filepath is not None:
         return QIcon(filepath.as_posix())
     try:
         qicon = hou.qt.Icon(icon)
@@ -224,12 +252,15 @@ class Button(QPushButton):
         animation.start()
 
     def overlay(self):
-        """AnimationOverlay of the window, None outside the hotbox"""
+        """AnimationOverlay of this button's own window, None if the window has none.
+        The search stops at the window: a child window must not paint into its parent window's overlay."""
         widget = self.parentWidget()
         while widget is not None:
             overlay = getattr(widget, "animationOverlay", None)
             if overlay is not None:
                 return overlay
+            if widget.isWindow():
+                return None
             widget = widget.parentWidget()
         return None
 

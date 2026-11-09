@@ -74,6 +74,19 @@ class RoundedWindow:
     def setupRoundedWindow(self):
         self.setAttribute(Qt.WA_TranslucentBackground)
 
+    def addAnimationOverlay(self):
+        """Layer painting the hovered/pressed Buttons zoomed; call after the layout is built"""
+        from .widgets import AnimationOverlay
+
+        self.animationOverlay = AnimationOverlay(self)
+
+    def resizeEvent(self, event):
+        overlay = getattr(self, "animationOverlay", None)
+        if overlay is not None:
+            overlay.setGeometry(self.rect())
+            overlay.raise_()
+        super().resizeEvent(event)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)

@@ -89,6 +89,8 @@ All keys are optional (the label defaults to the file name). `#icon` is a file i
 Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `SOP_null`, `OBJ_camera`, `LOP_fetch`...).
 The grid button next to the Icon field browses them: Houdini's own icons by category (SOP, OBJ, LOP...) and the
 HotBox ones, with search; double click or Choose puts the name into the field.
+**+ Add icons…** copies your `.svg` / `.png` / `.jpg` files into `icons/` of your first `HOTBOX_PATH` folder (without
+`HOTBOX_PATH`: into `hotbox/icons/`); they show up under HotBox and `#icon:my_tool.svg` finds them.
 The script runs as `__main__`, `sys.exit()` just stops it. When it fails, a window shows the error and the traceback;
 **Open in Script Manager** opens the script with the failing line highlighted in the code panel.
 
@@ -100,7 +102,7 @@ Keep personal and studio scripts outside the tool folder, so `git pull` never to
 HOTBOX_PATH = "$HOME/houdini_scripts/hotbox_lib;//server/pipeline/hotbox_lib"
 ```
 
-Each folder has the same layout as `lib/` (`all/`, `multiple/`, `single/`). Folders are searched in order, the
+Each folder has the same layout as `lib/` (`all/`, `multiple/`, `single/`), plus `icons/` for your icon files. Folders are searched in order, the
 built-in `lib/` last: a script hides the one with the same path in later folders (your `single/create_null.py`
 replaces the built-in one), and `#ref` targets are looked up the same way. The Script Manager marks scripts from
 these folders with the folder name; "Open HotBox folder" opens the first one. Separator: `;` (`:` works too on

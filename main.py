@@ -55,6 +55,7 @@ class HotBox(QWidget):
         else:
             self.lib_roots = scripts.libRoots(LIB_DIR, hou.getenv(scripts.PATH_ENV))
         self.lib_dir = self.lib_roots[0]
+        widgets.setIconFolders(self.lib_roots)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_DeleteOnClose)

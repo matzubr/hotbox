@@ -108,6 +108,7 @@ class NewScriptWindow(RoundedWindow, QWidget):
         self.create_button.clicked.connect(self.create)
         self.cancel_button.clicked.connect(self.close)
         self.updateFolders()
+        self.addAnimationOverlay()
         self.adjustSize()
         self.fadeIn()
         self.label_lineedit.setFocus()

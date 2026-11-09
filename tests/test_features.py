@@ -334,3 +334,71 @@ def test_icon_browser_without_houdini_icons(houdini, monkeypatch):
     assert browser.categories == ["All", "HotBox"]
     assert browser.model.names == browser.hotbox
     browser.close()
+
+
+def test_buttons_of_a_child_window_use_their_own_overlay(houdini, library, icons_zip):
+    from hotbox.utils.manager import ScriptManager
+
+    manager = ScriptManager(lib_folder=library)
+    browser = manager.browseIcons()
+    for button in (browser.choose_button, browser.cancel_button, browser.add_button):
+        assert button.overlay() is browser.animationOverlay  # not the manager's: it would paint into another window
+    window = manager.newScript()
+    assert window.create_button.overlay() is window.animationOverlay
+    manager.close()
+
+
+def test_add_icon_files(tmp_path):
+    from hotbox.utils.iconbrowser import addIconFiles
+
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "tool.svg").write_text("<svg>new</svg>")
+    (source / "photo.png").write_bytes(b"png")
+    (source / "notes.txt").write_text("not an icon")
+    folder = tmp_path / "icons"
+    (folder).mkdir()
+    (folder / "tool.svg").write_text("<svg>old</svg>")
+
+    asked = []
+    added = addIconFiles([source / "tool.svg", source / "photo.png", source / "notes.txt"], folder,
+                         replace=lambda name: asked.append(name) or False)
+    assert added == ["photo.png"] and asked == ["tool.svg"]
+    assert (folder / "tool.svg").read_text() == "<svg>old</svg>"  # kept: not replaced
+
+    assert addIconFiles([source / "tool.svg"], folder, replace=lambda name: True) == ["tool.svg"]
+    assert (folder / "tool.svg").read_text() == "<svg>new</svg>"
+    assert addIconFiles([folder / "tool.svg"], folder) == ["tool.svg"]  # already there
+
+
+def test_added_icons_go_to_your_lib_folder_and_are_found(houdini, tmp_path, icons_zip, monkeypatch):
+    from hotbox.utils import widgets
+    from hotbox.utils.iconbrowser import userIconFolder
+    from hotbox.utils.manager import ScriptManager
+
+    mine, builtin = tmp_path / "mine", widgets.BUILTIN_LIB_DIR
+    write_script(mine, "all/a.py", "#label:A\n")
+    manager = ScriptManager(lib_folder=[mine, builtin])
+    assert widgets.iconFolders() == [mine / "icons", widgets.ICONS_DIR]
+    assert userIconFolder() == mine / "icons"  # not into the tool folder
+
+    picture = tmp_path / "my_tool.svg"
+    picture.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><rect width="2" height="2"/></svg>')
+    browser = manager.browseIcons()
+    assert browser.addIcons([picture]) == ["my_tool.svg"]
+    assert (mine / "icons" / "my_tool.svg").is_file()
+    assert browser.categories_list.currentItem().text() == "HotBox"
+    assert browser.currentName() == "my_tool.svg"
+    assert widgets.resolveIcon("my_tool.svg") is not None  # buttons find it
+    browser.choose()
+    assert manager.icon_lineedit.text() == "my_tool.svg"
+    manager.close()
+    widgets.setIconFolders([builtin])
+
+
+def test_icons_without_hotbox_path_go_to_the_tool_icons(houdini, library):
+    from hotbox.utils import widgets
+    from hotbox.utils.iconbrowser import userIconFolder
+
+    widgets.setIconFolders([widgets.BUILTIN_LIB_DIR])
+    assert userIconFolder() == widgets.ICONS_DIR

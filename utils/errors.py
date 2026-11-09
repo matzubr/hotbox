@@ -72,6 +72,7 @@ class ErrorWindow(RoundedWindow, QWidget):
         content.setContentsMargins(12, 4, 12, 12)
         content.addWidget(body)
         layout.addLayout(content)
+        self.addAnimationOverlay()
         self.resize(760, 420)
         self.fadeIn()
 

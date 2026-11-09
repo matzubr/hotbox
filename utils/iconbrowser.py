@@ -7,6 +7,7 @@ themselves are made when they scroll into view.
 from __future__ import annotations
 
 import os
+import shutil
 import zipfile
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
@@ -16,10 +17,12 @@ import hou
 from .frameless import RoundedWindow, TitleBar
 from .qt import (
     QAbstractListModel,
+    QFileDialog,
     QLabel,
     QLineEdit,
     QListView,
     QListWidget,
+    QMessageBox,
     QModelIndex,
     QSize,
     Qt,
@@ -28,12 +31,13 @@ from .qt import (
     Signal,
 )
 from .theme import COLORS, PANEL_RADIUS
-from .widgets import ICONS_DIR, Button, HLayout, buttonFont, resolveIcon
+from .widgets import ICON_SUFFIXES, Button, HLayout, buttonFont, iconFolders, resolveIcon
 
 ICONS_ZIP = "config/Icons/icons.zip"
 HOTBOX_CATEGORY = "HotBox"
 ALL_CATEGORY = "All"
-FILE_SUFFIXES = (".svg", ".png", ".jpg", ".jpeg")
+FILE_SUFFIXES = ICON_SUFFIXES
+FILE_FILTER = "Icons (*.svg *.png *.jpg *.jpeg)"
 # The useful ones first in the list, the rest alphabetically
 CATEGORY_ORDER = ("SOP", "OBJ", "LOP", "DOP", "COP", "VOP", "TOP", "ROP", "CHOP", "MISC", "BUTTONS", "NETWORKS")
 
@@ -75,8 +79,37 @@ def houdiniIconNames(zip_path: Path | None) -> dict[str, list[str]]:
 
 
 def hotboxIconNames() -> list[str]:
-    """Files in hotbox/icons/ ('save.svg')"""
-    return sorted((f.name for f in ICONS_DIR.iterdir() if f.suffix.lower() in FILE_SUFFIXES), key=str.casefold)
+    """Icon files of HotBox: icons/ of the HOTBOX_PATH lib folders and the built-in hotbox/icons ('save.svg')"""
+    names = set()
+    for folder in iconFolders():
+        if folder.is_dir():
+            names.update(f.name for f in folder.iterdir() if f.is_file() and f.suffix.lower() in FILE_SUFFIXES)
+    return sorted(names, key=str.casefold)
+
+
+def userIconFolder() -> Path:
+    """Where added icons go: icons/ of your first HOTBOX_PATH lib folder, else the built-in hotbox/icons"""
+    return iconFolders()[0]
+
+
+def addIconFiles(files, folder: Path, replace=lambda name: True) -> list[str]:
+    """Copy icon files into the folder; replace(name) decides about an existing file with other content.
+    Returns the names as #icon takes them ('my_tool.svg')."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    added = []
+    for file in map(Path, files):
+        if not file.is_file() or file.suffix.lower() not in FILE_SUFFIXES:
+            continue
+        target = folder / file.name
+        if target.resolve() == file.resolve():
+            added.append(file.name)  # already there
+            continue
+        if target.exists() and target.read_bytes() != file.read_bytes() and not replace(file.name):
+            continue
+        shutil.copyfile(file, target)
+        added.append(file.name)
+    return added
 
 
 def orderedCategories(categories) -> list[str]:
@@ -153,6 +186,8 @@ class IconBrowser(RoundedWindow, QWidget):
         self.count_label.setObjectName("Hint")
         self.selected_label = QLabel()
         self.selected_label.setFont(buttonFont(11))
+        self.add_button = Button("+ Add icons…", buttonColor="#4a4a4a", size=(140, 36), fontSize=12)
+        self.add_button.setToolTip(f"Copy .svg / .png / .jpg files into {userIconFolder().as_posix()}")
         self.choose_button = Button("Choose", buttonColor=COLORS["accent"], textColor="#ffffff", size=(110, 36),
                                     fontSize=12)
         self.cancel_button = Button("Cancel", buttonColor="#4a4a4a", size=(100, 36), fontSize=12)
@@ -176,7 +211,7 @@ class IconBrowser(RoundedWindow, QWidget):
         lists = HLayout([self.categories_list, self.icons_view], align=None)
         lists.setStretch(1, 1)
         rows.addLayout(lists, 1)
-        footer = HLayout([self.selected_label, self.count_label], align=None)
+        footer = HLayout([self.add_button, self.selected_label, self.count_label], align=None)
         footer.addStretch(1)
         footer.addWidget(self.cancel_button)
         footer.addWidget(self.choose_button)
@@ -193,6 +228,7 @@ class IconBrowser(RoundedWindow, QWidget):
         content.setContentsMargins(12, 4, 12, 12)
         content.addWidget(body)
         layout.addLayout(content)
+        self.addAnimationOverlay()
         self.resize(820, 560)
 
         self.search_lineedit.textChanged.connect(self.updateIcons)
@@ -200,6 +236,7 @@ class IconBrowser(RoundedWindow, QWidget):
         self.icons_view.doubleClicked.connect(lambda index: self.choose())
         self.icons_view.clicked.connect(lambda index: self.updateSelected())
         self.choose_button.clicked.connect(self.choose)
+        self.add_button.clicked.connect(self.addIcons)
         self.cancel_button.clicked.connect(self.close)
         self.select(current)
         self.fadeIn()
@@ -251,6 +288,34 @@ class IconBrowser(RoundedWindow, QWidget):
             self.updateSelected()
 
     # --- actions ------------------------------------------------------------------------------------------------
+
+    def pickFiles(self) -> list[str]:
+        files, _filter = QFileDialog.getOpenFileNames(self, "Add icons", "", FILE_FILTER)
+        return files
+
+    def confirmReplace(self, name: str) -> bool:
+        answer = QMessageBox.question(self, "Icons", f"{name} already exists with another picture. Replace it?",
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return answer == QMessageBox.Yes
+
+    def addIcons(self, files=None) -> list[str]:
+        """Copy the picked files into your icon folder; they show in HotBox, the last one selected"""
+        files = self.pickFiles() if files is None else files
+        if not files:
+            return []
+        try:
+            added = addIconFiles(files, userIconFolder(), replace=self.confirmReplace)
+        except OSError as e:
+            QMessageBox.warning(self, "Icons", f"Can't copy the icons:\n{e}")
+            return []
+        self.model._icons.clear()  # a replaced file has a new picture
+        self.hotbox = hotboxIconNames()
+        if added:
+            self.search_lineedit.clear()
+            self.select(added[-1])
+        else:
+            self.updateIcons()
+        return added
 
     def choose(self) -> str | None:
         name = self.currentName()
