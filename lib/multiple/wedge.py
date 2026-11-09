@@ -7,7 +7,7 @@
 # A TOP network with a Wedge for the parameters you pick on the selected nodes:
 # from the current value to twice it. Target Parameter and "Overwrite Target Parameter on Work Item Selection" are on:
 # picking a work item shows its values in the node. Geometry Import -> Wedge -> ROP Geometry Output: the ROP writes
-# the result of the network (its display node) per wedge to $HIP/geo/wedge/<name>/ (Use External SOP off)
+# what the Geometry Import brings (its SOP Path) per wedge to $HIP/geo/wedge/<name>/ (Use External SOP off)
 import hou
 from hotbox.common import panes, wedge
 

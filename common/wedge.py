@@ -152,16 +152,9 @@ def _childOf(topnet, type_name: str, exclude=()):
     return next((c for c in topnet.children() if c.type().name() == type_name and c not in exclude), None)
 
 
-def builtInSopNetwork(rop):
-    """The SOP network inside a ROP Geometry Output TOP (used with Use External SOP off)"""
-    if rop.childTypeCategory() == hou.sopNodeTypeCategory():
-        return rop
-    return next((c for c in rop.children() if c.childTypeCategory() == hou.sopNodeTypeCategory()), None)
-
-
 def buildChain(topnet, wedge, node) -> list[str]:
-    """Geometry Import -> Wedge -> ROP Geometry Output. The ROP writes one file per wedge with its built-in SOP
-    network (Use External SOP off), an Object Merge of the result inside. Returns what couldn't be set."""
+    """Geometry Import -> Wedge -> ROP Geometry Output. The geometry comes from the Geometry Import (its SOP Path),
+    the ROP writes it per wedge (Use External SOP off). Returns what couldn't be set."""
     problems = []
     source = _childOf(topnet, "geometryimport") or topnet.createNode("geometryimport")
     rop = _childOf(topnet, "ropgeometry") or topnet.createNode("ropgeometry", f"write_{node.name()}")
@@ -182,11 +175,7 @@ def buildChain(topnet, wedge, node) -> list[str]:
         output.set((OUTPUT_FILE.format(name=written.name()),))
     else:
         problems.append(f"Output File = {OUTPUT_FILE.format(name=written.name())}")
-
-    network = builtInSopNetwork(rop)
-    if network is None:
-        problems.append(f"Inside {rop.name()}: Object Merge of {written.path()}")
-        return problems
+    return problems
     merge = network.createNode("object_merge", f"IMPORT_{written.name()}")
     merge.parm("objpath1").set(written.path())
     merge.setDisplayFlag(True)

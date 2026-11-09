@@ -419,8 +419,7 @@ def test_wedge_chain_geometry_import_wedge_rop(hou, vec, monkeypatch):
     rop.setInput.assert_called_once_with(0, wedge_node)
     external.set.assert_called_once_with((0,))
     output.set.assert_called_once_with(("$HIP/geo/wedge/OUT/OUT.`@wedgeindex`.$F4.bgeo.sc",))
-    rop.createNode.assert_called_once_with("object_merge", "IMPORT_OUT")
-    rop.createNode.return_value.parm.return_value.set.assert_called_once_with("/obj/geo1/OUT")
+    rop.createNode.assert_not_called()  # nothing inside the ROP: the geometry comes from the Geometry Import
 
 
 def test_wedge_indices_found_on_disk(tmp_path):
