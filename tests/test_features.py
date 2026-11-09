@@ -402,3 +402,24 @@ def test_icons_without_hotbox_path_go_to_the_tool_icons(houdini, library):
 
     widgets.setIconFolders([widgets.BUILTIN_LIB_DIR])
     assert userIconFolder() == widgets.ICONS_DIR
+
+
+def test_add_icons_button_opens_the_file_picker(houdini, tmp_path, icons_zip, monkeypatch):
+    from hotbox.utils import widgets
+    from hotbox.utils.iconbrowser import IconBrowser
+    from PySide6.QtTest import QTest
+
+    widgets.setIconFolders([tmp_path / "mine", widgets.BUILTIN_LIB_DIR])
+    picture = tmp_path / "clicked.svg"
+    picture.write_text("<svg/>")
+    browser = IconBrowser()
+    picked = []
+    monkeypatch.setattr(browser, "pickFiles", lambda: picked.append(True) or [picture.as_posix()])
+
+    QTest.mouseClick(browser.add_button, Qt.LeftButton)
+
+    assert picked == [True]  # the dialog was asked for
+    assert (tmp_path / "mine" / "icons" / "clicked.svg").is_file()
+    assert browser.currentName() == "clicked.svg"
+    browser.close()
+    widgets.setIconFolders([widgets.BUILTIN_LIB_DIR])

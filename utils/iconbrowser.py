@@ -236,7 +236,7 @@ class IconBrowser(RoundedWindow, QWidget):
         self.icons_view.doubleClicked.connect(lambda index: self.choose())
         self.icons_view.clicked.connect(lambda index: self.updateSelected())
         self.choose_button.clicked.connect(self.choose)
-        self.add_button.clicked.connect(self.addIcons)
+        self.add_button.clicked.connect(lambda checked=False: self.addIcons())  # not clicked(checked) as files
         self.cancel_button.clicked.connect(self.close)
         self.select(current)
         self.fadeIn()
