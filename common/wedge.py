@@ -92,7 +92,7 @@ def buildWedge(parms, count: int) -> tuple:
             problems.append(f"Target Parameter #{i} = {parm.path()} (turned on)")
     if not setToggle(wedge, OVERWRITE_LABEL):
         problems.append(f"{OVERWRITE_LABEL}: on")
-    connectToWedge(topnet, wedge)
+    problems += buildChain(topnet, wedge, parms[0].node())
     return wedge, problems
 
 
@@ -135,12 +135,60 @@ def setTargetParameter(wedge, instance: int, path: str) -> bool:
     return field is not None and toggle is not None
 
 
-def connectToWedge(topnet, wedge) -> None:
-    """Nodes the TOP network was created with (Geometry Import...) get their work items from the Wedge"""
-    for child in topnet.children():
-        if child == wedge or child.inputs() or child.type().maxNumInputs() == 0:
-            continue  # schedulers have no inputs
-        child.setInput(0, wedge)
-        wedge.setPosition(child.position() + hou.Vector2(0, 1.5))
-        child.setDisplayFlag(True)
-        break
+OUTPUT_FILE = "$HIP/geo/wedge/{name}/{name}.`@wedgeindex`.$F4.bgeo.sc"
+
+
+def outputSop(node):
+    """What the wedge writes: the display node of the SOP network of the wedged node"""
+    try:
+        if node.type().category() == hou.sopNodeTypeCategory():
+            return node.parent().displayNode() or node
+    except (AttributeError, hou.OperationFailed):
+        pass
+    return node
+
+
+def _childOf(topnet, type_name: str, exclude=()):
+    return next((c for c in topnet.children() if c.type().name() == type_name and c not in exclude), None)
+
+
+def builtInSopNetwork(rop):
+    """The SOP network inside a ROP Geometry Output TOP (used with Use External SOP off)"""
+    if rop.childTypeCategory() == hou.sopNodeTypeCategory():
+        return rop
+    return next((c for c in rop.children() if c.childTypeCategory() == hou.sopNodeTypeCategory()), None)
+
+
+def buildChain(topnet, wedge, node) -> list[str]:
+    """Geometry Import -> Wedge -> ROP Geometry Output. The ROP writes one file per wedge with its built-in SOP
+    network (Use External SOP off), an Object Merge of the result inside. Returns what couldn't be set."""
+    problems = []
+    source = _childOf(topnet, "geometryimport") or topnet.createNode("geometryimport")
+    rop = _childOf(topnet, "ropgeometry") or topnet.createNode("ropgeometry", f"write_{node.name()}")
+    wedge.setInput(0, source)
+    rop.setInput(0, wedge)
+    wedge.setPosition(source.position() - hou.Vector2(0, 1.5))
+    rop.setPosition(wedge.position() - hou.Vector2(0, 1.5))
+    rop.setDisplayFlag(True)
+
+    external = parmByLabel(rop, "Use External SOP", kinds=("Toggle",))
+    if external is not None:
+        external.set((0,))
+    else:
+        problems.append("Use External SOP: off")
+    written = outputSop(node)
+    output = parmByLabel(rop, "Output File", kinds=("String",))
+    if output is not None:
+        output.set((OUTPUT_FILE.format(name=written.name()),))
+    else:
+        problems.append(f"Output File = {OUTPUT_FILE.format(name=written.name())}")
+
+    network = builtInSopNetwork(rop)
+    if network is None:
+        problems.append(f"Inside {rop.name()}: Object Merge of {written.path()}")
+        return problems
+    merge = network.createNode("object_merge", f"IMPORT_{written.name()}")
+    merge.parm("objpath1").set(written.path())
+    merge.setDisplayFlag(True)
+    merge.setRenderFlag(True)
+    return problems

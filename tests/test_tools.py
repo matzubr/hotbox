@@ -391,13 +391,33 @@ def test_wedge_overwrite_toggle_and_connection(vec):
     assert wedge.setToggle(node, wedge.OVERWRITE_LABEL)
     overwrite.set.assert_called_once_with((1,))
 
-    wedge_node, scheduler, importer = MagicMock(), MagicMock(), MagicMock()
-    scheduler.inputs.return_value = importer.inputs.return_value = []
-    scheduler.type.return_value.maxNumInputs.return_value = 0
-    importer.type.return_value.maxNumInputs.return_value = 1
+
+
+def test_wedge_chain_geometry_import_wedge_rop(hou, vec, monkeypatch):
+    sop = object()
+    monkeypatch.setattr(hou, "sopNodeTypeCategory", lambda: sop, raising=False)
+    importer, scheduler = MagicMock(), MagicMock()
+    importer.type.return_value.name.return_value = "geometryimport"
+    scheduler.type.return_value.name.return_value = "localscheduler"
     importer.position.return_value = Vec(0, 0)
     topnet = MagicMock()
-    topnet.children.return_value = [scheduler, wedge_node, importer]
-    wedge.connectToWedge(topnet, wedge_node)
-    importer.setInput.assert_called_once_with(0, wedge_node)
-    scheduler.setInput.assert_not_called()
+    topnet.children.return_value = [scheduler, importer]
+    rop = MagicMock()
+    rop.childTypeCategory.return_value = sop
+    external, output = _tuple("usesoppath", "Use External SOP", "Toggle"), _tuple("sopoutput", "Output File", "String")
+    rop.parmTuples.return_value = [external, output]
+    topnet.createNode.return_value = rop
+    wedge_node = MagicMock()
+    wedge_node.position.return_value = Vec(0, -1.5)
+    node = MagicMock()
+    node.type.return_value.category.return_value = sop
+    node.parent.return_value.displayNode.return_value.name.return_value = "OUT"
+    node.parent.return_value.displayNode.return_value.path.return_value = "/obj/geo1/OUT"
+
+    assert wedge.buildChain(topnet, wedge_node, node) == []
+    wedge_node.setInput.assert_called_once_with(0, importer)
+    rop.setInput.assert_called_once_with(0, wedge_node)
+    external.set.assert_called_once_with((0,))
+    output.set.assert_called_once_with(("$HIP/geo/wedge/OUT/OUT.`@wedgeindex`.$F4.bgeo.sc",))
+    rop.createNode.assert_called_once_with("object_merge", "IMPORT_OUT")
+    rop.createNode.return_value.parm.return_value.set.assert_called_once_with("/obj/geo1/OUT")
