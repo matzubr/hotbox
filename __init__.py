@@ -17,36 +17,16 @@ __version__ = "2.1.0"
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _loaded_at = time.time()
 
-# Dependency order: modules are reloaded top to bottom
-_SUBMODULES = (
-    "utils.qt",
-    "utils.scripts",
-    "utils.settings",
-    "utils.runner",
-    "utils.utility",
-    "utils.theme",
-    "utils.widgets",
-    "utils.frameless",
-    "utils.packages",
-    "utils.newscript",
-    "utils.iconbrowser",
-    "utils.manager",
-    "utils.errors",
-    "common.panes",
-    "common.nodes",
-    "common.paths",
-    "common.frames",
-    "main",
-)
-
 
 def reload_modules():
-    global _loaded_at
-    for name in _SUBMODULES:
-        module = sys.modules.get(f"{__name__}.{name}")
-        if module is not None:
-            importlib.reload(module)
-    _loaded_at = time.time()
+    """Forget every loaded hotbox module and import the package again: changed modules, modules added since
+    Houdini started, and this file too. (Reloading one by one from a fixed list missed new modules: they kept
+    the old code and the old classes they imported.)"""
+    prefix = __name__ + "."
+    for name in [name for name in sys.modules if name.startswith(prefix)]:
+        del sys.modules[name]
+    importlib.invalidate_caches()
+    importlib.reload(sys.modules[__name__])  # new __init__ code, _loaded_at is now
 
 
 def _filesChangedSinceLoad() -> bool:

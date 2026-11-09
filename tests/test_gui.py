@@ -600,3 +600,34 @@ def test_finish_pop_in_skips_the_animation(houdini, library, qapp):
     assert manager._popProxy is None
     manager._popClosed = True
     manager.close()
+
+
+def test_reload_picks_up_every_module(tmp_path):
+    """In a fresh interpreter: after reload_modules() no hotbox module keeps old classes, new ones included"""
+    import os
+    import subprocess
+    import sys
+    import textwrap
+
+    from conftest import ROOT
+
+    script = tmp_path / "reload_check.py"
+    script.write_text(textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {str(ROOT / "tests")!r})
+        import conftest  # hou stub, hotbox on sys.path
+        import hotbox
+        from hotbox.utils import iconbrowser, widgets
+        old_button, old_loaded = widgets.Button, hotbox._loaded_at
+        hotbox.reload_modules()
+        from hotbox.utils import iconbrowser as new_iconbrowser
+        from hotbox.utils import widgets as new_widgets
+        assert new_widgets.Button is not old_button
+        assert new_iconbrowser.Button is new_widgets.Button  # not the stale class
+        assert new_iconbrowser is not iconbrowser
+        assert hotbox._loaded_at >= old_loaded
+        print("ok")
+    """))
+    result = subprocess.run([sys.executable, script.as_posix()], capture_output=True, text=True, timeout=60,
+                            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"}, check=False)
+    assert result.stdout.strip().endswith("ok"), result.stderr
