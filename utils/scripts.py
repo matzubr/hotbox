@@ -24,6 +24,16 @@ The same tool in another mode/context: a file with only a header and a reference
 runs the referenced script (path inside lib/). The reference takes the label, colors, icon and group of the
 target, its own header overrides them. The hotkey is not inherited: hotkeys are chosen per context.
 
+Shift: a script can do something else when its button is clicked with Shift (hotbox.modifiers()), and
+
+    #shiftlabel:Object Merge Absolute
+
+is the button text while Shift is held.
+
+Several libraries: HOTBOX_PATH lists more lib folders (';' separated, ':' too on Linux/macOS), searched in
+order before the built-in lib/. A script in an earlier folder hides the one with the same mode/relpath in a
+later folder; #ref targets are looked up the same way. Personal and studio scripts live outside the tool folder.
+
 Nothing is cached on disk: headers are read every time the hotbox opens (a few dozen small files),
 so the tool folder can be copied between users and machines as is. The old schema.json cache kept
 absolute paths of the machine it was created on and broke on every other one.
@@ -32,12 +42,15 @@ No hou / Qt imports here: the module is tested without Houdini.
 """
 from __future__ import annotations
 
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 MODES = ("all", "multiple", "single")
-SETTINGS = ("ref", "label", "group", "package", "textcolor", "buttoncolor", "icon", "link", "hotkey")
+SETTINGS = ("ref", "label", "shiftlabel", "group", "package", "textcolor", "buttoncolor", "icon", "link", "hotkey")
+PATH_ENV = "HOTBOX_PATH"
 NOT_INHERITED = ("ref", "hotkey")
 MAX_REF_DEPTH = 8
 DEFAULTS = {"textcolor": "#e8e8e8", "buttoncolor": "#222222"}
@@ -53,6 +66,12 @@ class Script:
     own: dict | None = field(default=None, compare=False)  # header of this file only (None: same as settings)
     target: Path | None = field(default=None, compare=False)  # file to run (the ref target or the script itself)
     error: str | None = field(default=None, compare=False)  # broken reference
+    root: Path | None = field(default=None, compare=False)  # lib folder the script comes from
+
+    @property
+    def key(self) -> str:
+        """'mode/relpath': the same in every lib folder (lib/single/null/x.py -> 'single/null/x.py')"""
+        return f"{self.path.relative_to(self.root).parts[0]}/{self.relpath}" if self.root else self.relpath
 
     @property
     def ownSettings(self) -> dict:
@@ -93,6 +112,10 @@ class Script:
         return self.settings.get("label") or Path(self.relpath).stem
 
     @property
+    def shiftLabel(self) -> str | None:
+        return self.settings.get("shiftlabel") or None
+
+    @property
     def hotkey(self) -> str | None:
         return self.settings.get("hotkey") or None
 
@@ -126,11 +149,58 @@ def readHeader(path: Path) -> dict:
     return settings
 
 
-def scanScripts(folder: Path, suffixes=(".py",)) -> list[Script]:
-    """All scripts in a lib/<mode> folder, sorted by relative path"""
+def splitPathList(value: str) -> list[str]:
+    """HOTBOX_PATH items: ';' separated; on Linux/macOS ':' too (Windows drive letters keep their ':')"""
+    separators = r";" if sys.platform == "win32" else r"[;:]"
+    return [item.strip() for item in re.split(separators, value or "") if item.strip()]
+
+
+def libRoots(builtin: Path, value: str | None = None) -> list[Path]:
+    """Lib folders to read, first wins: HOTBOX_PATH folders, then the built-in lib/.
+    Folders that don't exist are skipped (with a message), duplicates are dropped."""
+    value = os.environ.get(PATH_ENV, "") if value is None else value
+    roots: list[Path] = []
+    for item in splitPathList(value):
+        folder = Path(os.path.expandvars(os.path.expanduser(item)))
+        if not folder.is_dir():
+            print(f"HotBox: {PATH_ENV}: no folder {folder.as_posix()}")
+            continue
+        roots.append(folder)
+    roots.append(Path(builtin))
+    unique, seen = [], set()
+    for root in roots:
+        resolved = root.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(root)
+    return unique
+
+
+def asRoots(lib_roots) -> list[Path]:
+    """A lib folder or a list of them -> list of Paths"""
+    if isinstance(lib_roots, (str, Path)):
+        return [Path(lib_roots)]
+    return [Path(root) for root in lib_roots]
+
+
+def scanLibrary(lib_roots, mode: str) -> list[Script]:
+    """Scripts of a mode over all lib folders; a script hides the same relpath in later folders"""
+    roots = asRoots(lib_roots)
+    found: dict[str, Script] = {}
+    for root in roots:
+        for script in scanScripts(root / mode, lib_roots=roots):
+            found.setdefault(script.relpath, script)
+    return sorted(found.values(), key=lambda script: script.relpath)
+
+
+def scanScripts(folder: Path, suffixes=(".py",), lib_roots=None) -> list[Script]:
+    """All scripts in a lib/<mode> folder, sorted by relative path.
+    lib_roots: all lib folders, for #ref lookup (default: only the one this folder is in)"""
     folder = Path(folder)
     if not folder.is_dir():
         return []
+    root = folder.parent
+    roots = asRoots(lib_roots) if lib_roots is not None else [root]
     scripts = []
     for path in sorted(folder.rglob("*")):
         if not path.is_file() or path.suffix not in suffixes or "__pycache__" in path.parts:
@@ -142,31 +212,42 @@ def scanScripts(folder: Path, suffixes=(".py",)) -> list[Script]:
             print(f"HotBox: can't read {path.as_posix()}: {e}")
             continue
         if "ref" not in own:
-            scripts.append(Script(path=path, relpath=relpath, settings=own))
+            scripts.append(Script(path=path, relpath=relpath, settings=own, root=root))
             continue
-        target, settings, error = resolveRef(path, own, folder.parent)
+        target, settings, error = resolveRef(path, own, roots)
         if error:
             print(f"HotBox: {relpath}: {error}")
-        scripts.append(Script(path=path, relpath=relpath, settings=settings, own=own, target=target, error=error))
+        scripts.append(Script(path=path, relpath=relpath, settings=settings, own=own, target=target, error=error,
+                              root=root))
     return scripts
 
 
-def resolveRef(path: Path, own: dict, lib_root: Path) -> tuple[Path | None, dict, str | None]:
-    """Follow #ref (also chains) from a script. Returns (target file, merged settings, error)."""
-    lib_root = Path(lib_root).resolve()
+def findRef(ref: str, lib_roots) -> tuple[Path | None, str | None]:
+    """File of a #ref value in the first lib folder that has it. (path, error)"""
+    ref = ref.replace("\\", "/").lstrip("/")
+    for root in asRoots(lib_roots):
+        root = root.resolve()
+        candidate = (root / ref).resolve()
+        if root not in candidate.parents:
+            return None, "points outside lib/"
+        if candidate.is_file():
+            return candidate, None
+    return None, f"not found (lib/{ref})"
+
+
+def resolveRef(path: Path, own: dict, lib_roots) -> tuple[Path | None, dict, str | None]:
+    """Follow #ref (also chains) from a script. Returns (target file, merged settings, error).
+    lib_roots: a lib folder or the list of them (HOTBOX_PATH order)."""
     seen = {Path(path).resolve()}
     chain = [own]
     current = own
     target = None
     while "ref" in current:
-        ref = current["ref"].replace("\\", "/").lstrip("/")
-        candidate = (lib_root / ref).resolve()
-        if lib_root not in candidate.parents:
-            return None, _merge([own]), f"#ref:{current['ref']} points outside lib/"
+        candidate, error = findRef(current["ref"], lib_roots)
+        if error:
+            return None, _merge([own]), f"#ref:{current['ref']} {error}"
         if candidate in seen:
             return None, _merge([own]), f"#ref:{current['ref']} makes a loop"
-        if not candidate.is_file():
-            return None, _merge([own]), f"#ref:{current['ref']} not found (lib/{ref})"
         if len(seen) > MAX_REF_DEPTH:
             return None, _merge([own]), "#ref chain is too long"
         seen.add(candidate)
@@ -211,12 +292,12 @@ def availableScripts(scripts: list[Script], isEnabled) -> list[Script]:
     return [script for script in scripts if script.isAvailable(isEnabled)]
 
 
-def allPackages(lib_root: Path) -> dict[str, list[str]]:
-    """{package: ["mode/relpath", ...]} over all modes of lib/; names as written in the first script"""
+def allPackages(lib_roots) -> dict[str, list[str]]:
+    """{package: ["mode/relpath", ...]} over all modes of the lib folders; names as written in the first script"""
     packages: dict[str, list[str]] = {}
     names: dict[str, str] = {}
     for mode in MODES:
-        for script in scanScripts(Path(lib_root) / mode):
+        for script in scanLibrary(lib_roots, mode):
             for name in script.packages:
                 key = names.setdefault(name.casefold(), name)
                 packages.setdefault(key, []).append(f"{mode}/{script.relpath}")
@@ -289,9 +370,14 @@ def writeBody(path: Path, body: str) -> None:
     writeHeader(path, readHeader(path), body=body)
 
 
-def scriptRefs(lib_root: Path) -> list[str]:
+def scriptRefs(lib_roots) -> list[str]:
     """Every script as a #ref value ('single/create_null.py'), scripts that are refs themselves excluded"""
-    return [f"{mode}/{s.relpath}" for mode in MODES for s in scanScripts(Path(lib_root) / mode) if not s.ref]
+    return [f"{mode}/{s.relpath}" for mode in MODES for s in scanLibrary(lib_roots, mode) if not s.ref]
+
+
+def headerLineCount(path: Path) -> int:
+    """Lines of the leading comment block (readBody drops them)"""
+    return _splitHeader(_readText(path).splitlines())
 
 
 def visibleTogether(a: Script, b: Script) -> bool:
@@ -309,6 +395,22 @@ def hotkeyConflicts(scripts: list[Script], script: Script, hotkey: str) -> list[
         for other in scripts
         if other.relpath != script.relpath and visibleTogether(script, other) and (other.hotkey or "").lower() == hotkey
     ]
+
+
+# Shift + digit row -> the digit, US and Russian layouts: Shift+1 still finds the hotkey '1'
+SHIFTED_TO_KEY = {**dict(zip("!@#$%^&*()", "1234567890", strict=True)), '"': "2", "№": "3", ";": "4", ":": "6", "?": "7"}
+
+
+def unshiftedKey(text: str) -> str | None:
+    return SHIFTED_TO_KEY.get(text) if text else None
+
+
+def matchesSearch(label: str, query: str) -> bool:
+    """Every word of the query is in the label (case ignored); a query typed in the Russian layout
+    is also tried as the Latin keys it was typed on"""
+    label = label.casefold()
+    candidates = {query.casefold(), "".join(LAYOUT_TO_LATIN.get(c, c) for c in query.casefold())}
+    return any(all(word in label for word in candidate.split()) for candidate in candidates if candidate.strip())
 
 
 # Russian ЙЦУКЕН -> the Latin letter on the same physical key, so hotkeys work in either keyboard layout

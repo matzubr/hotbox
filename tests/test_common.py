@@ -73,11 +73,11 @@ def test_paste_merge_nodes_from_clipboard(hou, monkeypatch):
     created[0].setUserData.assert_not_called()  # plain paste: default look
 
 
-@pytest.mark.parametrize(("category", "script"), [
-    ("Sop", "object_merge_relative.py"), ("Sop", "object_merge_absolute.py"),
-    ("Lop", "fetch_relative.py"), ("Lop", "fetch_absolute.py"),
+@pytest.mark.parametrize(("category", "script", "modifiers", "relative"), [
+    ("Sop", "object_merge.py", (), True), ("Sop", "object_merge.py", ("shift",), False),
+    ("Lop", "fetch.py", (), True), ("Lop", "fetch.py", ("shift",), False),
 ])
-def test_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, category, script):
+def test_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, category, script, modifiers, relative):
     from conftest import ROOT
     from hotbox.common import panes
     from hotbox.utils import runner
@@ -93,12 +93,16 @@ def test_merge_scripts_chevron_shape_and_source_color(hou, monkeypatch, category
     created = []
     network.createNode.side_effect = lambda *args: created.append(MagicMock()) or created[-1]
 
-    assert runner.runScript(ROOT / "lib" / "all" / category / script)
+    assert runner.runScript(ROOT / "lib" / "all" / category / script, modifiers=modifiers)
 
     assert len(created) == 2
+    path_parm = "objpath1" if category == "Sop" else "loppath"
     for node, source in zip(created, sources.values()):
         node.setUserData.assert_called_once_with("nodeshape", "chevron_up")
         node.setColor.assert_called_once_with(source.color())
+        expected = node.relativePathTo(source) if relative else source.path()
+        node.parm(path_parm).set.assert_any_call(expected)
+    assert runner.modifiers() == frozenset()  # only while the script runs
 
 
 def test_paste_merge_nodes_wrong_network(hou, monkeypatch):

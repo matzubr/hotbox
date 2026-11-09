@@ -22,6 +22,9 @@ from .qt import (
     QSyntaxHighlighter,
     Qt,
     QTextCharFormat,
+    QTextCursor,
+    QTextEdit,
+    QTextFormat,
     QWidget,
 )
 from .theme import COLORS
@@ -196,6 +199,20 @@ class CodeEditor(QPlainTextEdit):
                            f" border:1px solid {COLORS['border']}; border-radius:6px; padding:4px; }}"
                            f"QPlainTextEdit:focus {{ border:1px solid {COLORS['accent']}; }}")
         self.highlighter = PythonHighlighter(self.document())
+
+    def showLine(self, line: int) -> None:
+        """Cursor on the line (1-based) and the line highlighted, e.g. where a script failed"""
+        block = self.document().findBlockByNumber(max(0, line - 1))
+        if not block.isValid():
+            return
+        cursor = QTextCursor(block)
+        self.setTextCursor(cursor)
+        self.centerCursor()
+        selection = QTextEdit.ExtraSelection()
+        selection.format.setBackground(QColor(236, 60, 72, 70))
+        selection.format.setProperty(QTextFormat.FullWidthSelection, True)
+        selection.cursor = cursor
+        self.setExtraSelections([selection])
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Tab and not event.modifiers():

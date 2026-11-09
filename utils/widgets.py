@@ -105,10 +105,21 @@ def eventKeyCodes(event) -> list[int]:
     """Key codes to match a key press against: the key itself and, for another keyboard layout
     (Russian), the Latin key on the same physical key"""
     codes = [int(event.key())]
-    latin = keyCode(script_lib.latinKey(event.text()))
-    if latin is not None and latin not in codes:
-        codes.append(latin)
+    text = event.text()
+    candidates = [script_lib.latinKey(text)]
+    if event.modifiers() & Qt.ShiftModifier:  # Shift+1 gives '!': still the hotkey '1'
+        candidates.append(script_lib.unshiftedKey(text))
+    for candidate in candidates:
+        code = keyCode(candidate)
+        if code is not None and code not in codes:
+            codes.append(code)
     return codes
+
+
+def modifierNames(modifiers) -> frozenset[str]:
+    """Qt keyboard modifiers -> {'shift', 'ctrl', 'alt'} (ctrl: Cmd on macOS, as Qt maps it)"""
+    names = {"shift": Qt.ShiftModifier, "ctrl": Qt.ControlModifier, "alt": Qt.AltModifier}
+    return frozenset(name for name, flag in names.items() if modifiers & flag)
 
 
 def mixColor(color: QColor, other: QColor, amount: float) -> QColor:
@@ -161,6 +172,7 @@ class Button(QPushButton):
     RIPPLE_ALPHA = 0.35
     HOVER_MS, RIPPLE_MS, PRESS_MS = 150, 450, 220
     ICON_SIZE = 28
+    DIM_OPACITY = 0.22  # buttons that don't match the search
 
     def __init__(self, label: str = "ButtonText", buttonColor: str = "#222222", textColor: str = "#e8e8e8",
                  icon=None, parent=None, size: tuple[int, int] | None = None, fontSize: float = FONT_SIZE):
@@ -170,6 +182,7 @@ class Button(QPushButton):
         self.hover = 0.0
         self.ripple = 1.0  # 1: finished
         self.press = 0.0
+        self.dimmed = False
         self.ripplePos = QPointF(self.buttonWidth / 2, self.buttonHeight / 2)
         self._hoverAnimation = self._animation(self.HOVER_MS, "hover", QEasingCurve.OutCubic)
         self._rippleAnimation = self._animation(self.RIPPLE_MS, "ripple", QEasingCurve.OutQuad)
@@ -239,6 +252,16 @@ class Button(QPushButton):
         self.textColor = QColor(textColor)
         self.update()
 
+    def setDimmed(self, dimmed: bool):
+        """Faded out and not clickable (search: not a match)"""
+        if dimmed == self.dimmed:
+            return
+        self.dimmed = dimmed
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, dimmed)
+        if dimmed:
+            self.endHover()
+        self.update()
+
     def background(self) -> QColor:
         return mixColor(self.baseColor, WHITE, self.HOVER_WHITE * self.hover)
 
@@ -265,7 +288,7 @@ class Button(QPushButton):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
-        painter.setOpacity(1.0 - self.press)
+        painter.setOpacity((1.0 - self.press) * (self.DIM_OPACITY if self.dimmed else 1.0))
         center = rect.center()
         painter.translate(center)
         painter.scale(self.scale(), self.scale())
@@ -369,12 +392,29 @@ class ScriptButton(Button):
         super().__init__(label, script.buttoncolor, text_color, script.icon, parent)
         self.script = script
         self.hotkey = script.hotkey
+        self.shifted = False
         tooltip = script.relpath
+        if script.shiftLabel:
+            tooltip += f"\nShift: {script.shiftLabel}"
         if script.ref:
             tooltip += f"\n→ {script.ref}"
         if script.error:
             tooltip += f"\n{script.error}"
+        if script.root is not None:
+            tooltip += f"\n{script.root.as_posix()}"
         self.setToolTip(tooltip)
+
+    def labelText(self) -> str:
+        label = (self.script.shiftLabel if self.shifted else None) or self.script.label
+        return f"{label} ({self.hotkey})" if self.hotkey else label
+
+    def setShifted(self, shifted: bool):
+        """Shift held: the #shiftlabel text (what a Shift+click does)"""
+        if shifted == self.shifted:
+            return
+        self.shifted = shifted
+        if self.script.shiftLabel:
+            self.updateText(self.labelText())
 
 
 class ScriptGrid(QWidget):
@@ -492,16 +532,8 @@ class ScriptGrid(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        caption_font = buttonFont(FONT_SIZE - 4)
         for name, buttons in self.groups:
-            frame = self.groupFrame(buttons)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(255, 255, 255, 14))
-            painter.drawRoundedRect(frame, 12, 12)
-            painter.setFont(caption_font)
-            painter.setPen(QColor(232, 232, 232, 150))
-            caption = QRectF(frame.left() + 10, frame.top() + 3, frame.width() - 20, self.CAPTION_HEIGHT)
-            painter.drawText(caption, Qt.AlignLeft | Qt.AlignVCenter, name)
+            paintGroupFrame(painter, self.groupFrame(buttons), name)
         painter.end()
 
     def keybindings(self) -> dict[int, ScriptButton]:
@@ -511,6 +543,41 @@ class ScriptGrid(QWidget):
             if code is not None:
                 bindings[code] = button
         return bindings
+
+
+def paintGroupFrame(painter: QPainter, frame: QRectF, name: str) -> None:
+    """Translucent rounded frame with a caption: #group blocks and the Recent row"""
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(255, 255, 255, 14))
+    painter.drawRoundedRect(frame, 12, 12)
+    painter.setFont(buttonFont(FONT_SIZE - 4))
+    painter.setPen(QColor(232, 232, 232, 150))
+    caption = QRectF(frame.left() + 10, frame.top() + 3, frame.width() - 20, ScriptGrid.CAPTION_HEIGHT)
+    painter.drawText(caption, Qt.AlignLeft | Qt.AlignVCenter, name)
+
+
+class RecentRow(QWidget):
+    """The last run scripts of this mode in a row, framed like a group"""
+
+    CAPTION = "Recent"
+
+    def __init__(self, scripts: list[script_lib.Script], parent: QWidget = None):
+        super().__init__(parent)
+        self.buttons = [ScriptButton(script, parent=self) for script in scripts]
+        layout = QHBoxLayout(self)
+        pad = ScriptGrid.FRAME_PAD
+        layout.setContentsMargins(pad, ScriptGrid.CAPTION_HEIGHT + 4, pad, pad)
+        layout.setSpacing(ScriptGrid.COLUMN_GAP)
+        for button in self.buttons:
+            layout.addWidget(button)
+
+    def paintEvent(self, event):
+        if not self.buttons:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        paintGroupFrame(painter, QRectF(self.rect()), self.CAPTION)
+        painter.end()
 
 
 class HLayout(QHBoxLayout):

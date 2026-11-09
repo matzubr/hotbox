@@ -102,9 +102,10 @@ class ScriptManager(RoundedWindow, QWidget):
 
     ROOT_ITEM = "(root)"
 
-    def __init__(self, lib_folder: Path, parent=None):
+    def __init__(self, lib_folder, parent=None):
+        """lib_folder: a lib folder or the list of them (HOTBOX_PATH order, the built-in lib last)"""
         super().__init__(parent or hou.qt.mainWindow())
-        self.lib = Path(lib_folder)
+        self.roots = script_lib.asRoots(lib_folder)
         self.scripts: list[script_lib.Script] = []
         self._loading = False
         self._codePath: Path | None = None  # file shown in the code panel
@@ -134,6 +135,7 @@ class ScriptManager(RoundedWindow, QWidget):
         self.ref_lineedit = self.ref_field.lineedit
         self.ref_lineedit.setPlaceholderText("run another script: single/create_null.py")
         self.name_lineedit = QLineEdit()
+        self.shift_lineedit = QLineEdit()
         self.group_lineedit = QLineEdit()
         self.package_field = ChoiceField(multiple=True, empty_text="No packages yet")
         self.package_lineedit = self.package_field.lineedit
@@ -164,6 +166,7 @@ class ScriptManager(RoundedWindow, QWidget):
         rows = [
             ("Ref", self.ref_field),
             ("Name", self.name_lineedit),
+            ("Shift label", self.shift_lineedit),
             ("Group", self.group_lineedit),
             ("Package", self.package_field),
             ("Button color", self.button_color_swatch),
@@ -222,8 +225,8 @@ class ScriptManager(RoundedWindow, QWidget):
         self.mode_combobox.currentIndexChanged.connect(self.updateScripts)
         self.folders_list.currentRowChanged.connect(self.updateFilesList)
         self.files_list.currentRowChanged.connect(self.updateInfo)
-        for lineedit in (self.ref_lineedit, self.name_lineedit, self.group_lineedit, self.package_lineedit,
-                         self.icon_lineedit, self.hotkey_lineedit):
+        for lineedit in (self.ref_lineedit, self.name_lineedit, self.shift_lineedit, self.group_lineedit,
+                         self.package_lineedit, self.icon_lineedit, self.hotkey_lineedit):
             lineedit.textChanged.connect(self.onEdited)
         for swatch in (self.button_color_swatch, self.text_color_swatch):
             signal = getattr(swatch, "colorChanged", None)
@@ -247,8 +250,8 @@ class ScriptManager(RoundedWindow, QWidget):
 
     def updateChoices(self):
         """Values offered by Tab and ▾: existing scripts for Ref, existing packages for Package"""
-        self.ref_field.setChoices(script_lib.scriptRefs(self.lib))
-        self.package_field.setChoices(list(script_lib.allPackages(self.lib)))
+        self.ref_field.setChoices(script_lib.scriptRefs(self.roots))
+        self.package_field.setChoices(list(script_lib.allPackages(self.roots)))
 
     def currentFolder(self) -> str | None:
         item = self.folders_list.currentItem()
@@ -263,7 +266,7 @@ class ScriptManager(RoundedWindow, QWidget):
         return [s for s in self.scripts if s.context == folder]
 
     def updateScripts(self):
-        self.scripts = script_lib.scanScripts(self.lib / self.mode_combobox.currentText())
+        self.scripts = script_lib.scanLibrary(self.roots, self.mode_combobox.currentText())
         folders = sorted({s.context for s in self.scripts})
         self.folders_list.clear()
         self.folders_list.addItems([folder or self.ROOT_ITEM for folder in folders])
@@ -279,7 +282,8 @@ class ScriptManager(RoundedWindow, QWidget):
         isEnabled = settings.enabledChecker()
         for script in scripts:
             available = script.isAvailable(isEnabled)
-            self.files_list.addItem(script.path.name if available else f"{script.path.name}  — off")
+            text = script.path.name + self.rootSuffix(script)
+            self.files_list.addItem(text if available else f"{text}  — off")
             item = self.files_list.item(self.files_list.count() - 1)
             if not available:
                 item.setForeground(QColor("#6f6f6f"))
@@ -291,11 +295,22 @@ class ScriptManager(RoundedWindow, QWidget):
                 tooltip.append(f"#ref → {script.ref}")
             if script.packages:
                 tooltip.append(f"package: {', '.join(script.packages)}" + ("" if available else " (turned off)"))
+            tooltip.append(script.path.as_posix())
             item.setToolTip("\n".join(tooltip))
         if scripts:
             self.files_list.setCurrentRow(row if 0 <= row < len(scripts) else 0)
         else:
             self.updateInfo()
+
+    def rootName(self, root: Path) -> str:
+        root = Path(root)
+        return root.parent.name if root.name.lower() == "lib" else root.name
+
+    def rootSuffix(self, script: script_lib.Script) -> str:
+        """'  · studio' for scripts from HOTBOX_PATH folders; nothing for the built-in lib"""
+        if len(self.roots) < 2 or script.root is None or script.root == self.roots[-1]:
+            return ""
+        return f"  · {self.rootName(script.root)}"
 
     def currentScript(self) -> script_lib.Script | None:
         row = self.files_list.currentRow()
@@ -314,7 +329,7 @@ class ScriptManager(RoundedWindow, QWidget):
         ref = self.ref_lineedit.text().strip()
         if script is None or not ref:
             return {}, None
-        _target, merged, error = script_lib.resolveRef(script.path, {"ref": ref}, self.lib)
+        _target, merged, error = script_lib.resolveRef(script.path, {"ref": ref}, self.roots)
         merged.pop("ref", None)
         return merged, error
 
@@ -325,10 +340,11 @@ class ScriptManager(RoundedWindow, QWidget):
         own = script.ownSettings if script else {}
         self._loading = True
         for lineedit, key in ((self.ref_lineedit, "ref"), (self.name_lineedit, "label"),
+                              (self.shift_lineedit, "shiftlabel"),
                               (self.group_lineedit, "group"), (self.package_lineedit, "package"),
                               (self.icon_lineedit, "icon"), (self.hotkey_lineedit, "hotkey")):
             lineedit.setText(own.get(key, ""))
-        self.ref_field.setChoices([r for r in script_lib.scriptRefs(self.lib)
+        self.ref_field.setChoices([r for r in script_lib.scriptRefs(self.roots)
                                    if script is None or r != self.scriptRefValue(script)])
         self.file_lineedit.setText(script.path.as_posix() if script else "")
         if script:
@@ -357,6 +373,7 @@ class ScriptManager(RoundedWindow, QWidget):
             self._loading = False
         stem = script.path.stem if script else ""
         self.name_lineedit.setPlaceholderText(inherited.get("label") or stem)
+        self.shift_lineedit.setPlaceholderText(inherited.get("shiftlabel") or "text while Shift is held (optional)")
         self.group_lineedit.setPlaceholderText(inherited.get("group") or "buttons of one group stand together")
         self.package_lineedit.setPlaceholderText(inherited.get("package") or "shown only when the package is on")
         self.icon_lineedit.setPlaceholderText(inherited.get("icon") or "dino.svg / SOP_null")
@@ -415,6 +432,7 @@ class ScriptManager(RoundedWindow, QWidget):
         edited = {
             "ref": self.ref_lineedit.text().strip(),
             "label": self.name_lineedit.text().strip(),
+            "shiftlabel": self.shift_lineedit.text().strip(),
             "group": self.group_lineedit.text().strip(),
             "package": self.package_lineedit.text().strip(),
             "buttoncolor": self.button_color_swatch.color().name(),
@@ -438,6 +456,7 @@ class ScriptManager(RoundedWindow, QWidget):
         self._codePath = path
         self.code_edit.blockSignals(True)
         self.code_edit.setPlainText(script_lib.readBody(path) if path else "")
+        self.code_edit.setExtraSelections([])
         self.code_edit.blockSignals(False)
         self.code_edit.setReadOnly(path is None)
         self._codeDirty = False
@@ -451,10 +470,12 @@ class ScriptManager(RoundedWindow, QWidget):
         self.code_title.setToolTip(path.as_posix() if path else "")
 
     def relativeToLib(self, path: Path) -> str:
-        try:
-            return Path(path).resolve().relative_to(self.lib.resolve()).as_posix()
-        except ValueError:
-            return Path(path).name
+        for root in self.roots:
+            try:
+                return Path(path).resolve().relative_to(root.resolve()).as_posix()
+            except ValueError:
+                continue
+        return Path(path).name
 
     def _onCodeEdited(self):
         if not self._codeDirty:
@@ -506,7 +527,7 @@ class ScriptManager(RoundedWindow, QWidget):
                 script_lib.writeBody(self._codePath, code)
         self._codeDirty = False
         folder_row, file_row = self.folders_list.currentRow(), self.files_list.currentRow()
-        self.scripts = script_lib.scanScripts(self.lib / self.mode_combobox.currentText())
+        self.scripts = script_lib.scanLibrary(self.roots, self.mode_combobox.currentText())
         self.updateChoices()
         self.folders_list.setCurrentRow(folder_row)
         self.updateFilesList()
@@ -515,12 +536,32 @@ class ScriptManager(RoundedWindow, QWidget):
 
     def openPackages(self):
         """Gear: turn packages on/off; the list greys out scripts of turned off packages"""
-        self.packages_window = PackagesWindow(self.lib, parent=self)
+        self.packages_window = PackagesWindow(self.roots, parent=self)
         self.packages_window.changed.connect(self.updateFilesList)
         top_right = self.mapToGlobal(self.rect().topRight())  # under the gear, inside the manager
         self.packages_window.move(top_right.x() - self.packages_window.width() - 20, top_right.y() + 50)
         self.packages_window.show()
         return self.packages_window
+
+    def showScript(self, path: Path, line: int | None = None) -> bool:
+        """Select the script file (searched in every mode) and show its code at the line (1-based, in the file)"""
+        path = Path(path).resolve()
+        for mode_index, mode in enumerate(script_lib.MODES):
+            scripts = script_lib.scanLibrary(self.roots, mode)
+            match = next((s for s in scripts if s.path.resolve() == path), None)
+            if match is None:
+                continue
+            self.mode_combobox.setCurrentIndex(mode_index)
+            folders = [self.folders_list.item(i).text() for i in range(self.folders_list.count())]
+            self.folders_list.setCurrentRow(folders.index(match.context or self.ROOT_ITEM))
+            self.files_list.setCurrentRow([s.relpath for s in self.folderScripts()].index(match.relpath))
+            if self._codeOpen < 0.5:
+                self.toggleCode()
+            if line:
+                body_line = line - script_lib.headerLineCount(match.runPath or match.path)
+                self.code_edit.showLine(body_line)
+            return True
+        return False
 
     def openFile(self):
         script = self.currentScript()

@@ -1,0 +1,7 @@
+{
+    "env": [
+        {"HOTBOX_DIR": "C:/path/to/hotbox"},
+        {"PYTHONPATH": {"value": "$HOTBOX_DIR/..", "method": "append"}}
+    ],
+    "hpath": "$HOTBOX_DIR/houdini"
+}

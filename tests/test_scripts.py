@@ -172,3 +172,16 @@ def test_shipped_blackpoint_package():
     packages = scripts.allPackages(ROOT / "lib")["blackpoint"]
     for path in ("single/cam/camera_setup.py", "single/convert_path_to_film.py", "multiple/convert_path_to_film.py"):
         assert path in packages
+
+
+def test_houdini_package_and_shelf():
+    import json
+    import xml.etree.ElementTree as ET
+
+    package = json.loads((ROOT / "hotbox.json").read_text(encoding="utf-8"))
+    assert package["hpath"] == "$HOTBOX_DIR/houdini"
+    assert any("PYTHONPATH" in item for item in package["env"])
+    shelf = ET.parse(ROOT / "houdini" / "toolbar" / "hotbox.shelf").getroot()
+    tools = {tool.get("name"): tool.find("script").text for tool in shelf.iter("tool")}
+    assert "hotbox.show()" in tools["hotbox_show"]
+    assert "hotbox.manager()" in tools["hotbox_script_manager"]

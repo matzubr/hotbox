@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _loaded_at = time.time()
@@ -29,6 +29,7 @@ _SUBMODULES = (
     "utils.frameless",
     "utils.packages",
     "utils.manager",
+    "utils.errors",
     "common.panes",
     "common.nodes",
     "common.paths",
@@ -49,6 +50,30 @@ def reload_modules():
 def _filesChangedSinceLoad() -> bool:
     tool_files = [f for folder in ("", "utils", "common") for f in _PACKAGE_DIR.joinpath(folder).glob("*.py")]
     return max((f.stat().st_mtime for f in tool_files), default=0) > _loaded_at
+
+
+def modifiers() -> frozenset:
+    """For library scripts: keys held when the button was clicked, {'shift', 'ctrl', 'alt'}
+
+        import hotbox
+        absolute = "shift" in hotbox.modifiers()
+    """
+    from .utils import runner
+
+    return runner.modifiers()
+
+
+def manager(reload=False):
+    """Open the Script Manager on its own (shelf tool 'HotBox Scripts')"""
+    if reload or _filesChangedSinceLoad():
+        reload_modules()
+    import hou
+
+    from .main import LIB_DIR
+    from .utils import scripts
+    from .utils.manager import ScriptManager
+
+    return ScriptManager(lib_folder=scripts.libRoots(LIB_DIR, hou.getenv(scripts.PATH_ENV)))
 
 
 def show(reload=False):

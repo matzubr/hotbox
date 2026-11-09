@@ -31,6 +31,11 @@ Bottom row: open the HotBox folder · current context (click to close) · Script
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
 Everything a script does is one undo step.
 
+**Shift**: buttons with a `#shiftlabel` show what they do on Shift+click (Object Merge Relative → Absolute).
+**Tab** starts search: type a part of a label (in any keyboard layout), the other buttons fade out, `Enter` runs the
+first match, `Esc` or `Tab` ends the search.
+**Recent**: a row with the last 4 scripts you ran that fit the current selection/network.
+
 Animations: on hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
 On click or hotkey the button grows and fades out while the whole menu fades out, then the script runs.
 
@@ -78,7 +83,39 @@ Save writes the header and the code.
 
 All keys are optional (the label defaults to the file name). `#icon` is a file in `icons/` (`save.svg`) or a
 Houdini icon name, the one `node.type().icon()` returns (`SOP_attribwrangle`, `SOP_null`, `OBJ_camera`, `LOP_fetch`...).
-The script runs as `__main__`, `sys.exit()` just stops it, errors are printed to the console and shown in the status bar.
+The script runs as `__main__`, `sys.exit()` just stops it. When it fails, a window shows the error and the traceback;
+**Open in Script Manager** opens the script with the failing line highlighted in the code panel.
+
+### Shift+click: a second variant of a script
+
+```python
+#label:Object Merge Relative
+#shiftlabel:Object Merge Absolute
+
+import hotbox
+relative = "shift" not in hotbox.modifiers()
+```
+
+`hotbox.modifiers()` is the set of keys held on the click or hotkey (`shift`, `ctrl`, `alt`; `ctrl` is Cmd on macOS).
+`#shiftlabel` is the button text while Shift is held. One button instead of two: Object Merge, Fetch and
+Copy Path (Shift: the file path) work like this.
+
+### Your own scripts: `HOTBOX_PATH`
+
+Keep personal and studio scripts outside the tool folder, so `git pull` never touches them:
+
+```
+HOTBOX_PATH = "$HOME/houdini_scripts/hotbox_lib;//server/pipeline/hotbox_lib"
+```
+
+Each folder has the same layout as `lib/` (`all/`, `multiple/`, `single/`). Folders are searched in order, the
+built-in `lib/` last: a script hides the one with the same path in later folders (your `single/create_null.py`
+replaces the built-in one), and `#ref` targets are looked up the same way. The Script Manager marks scripts from
+these folders with the folder name; "Open HotBox folder" opens the first one. Separator: `;` (`:` works too on
+Linux/macOS).
+
+Recent scripts and the package switches are saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json`;
+`"recent_count": 0` there hides the Recent row.
 
 ### Packages: studio specific scripts
 
@@ -112,9 +149,9 @@ are in packages: turn them on in the gear menu if you need them.
 |---|---|
 | everywhere, nothing selected | Flipbook, **Scene**: Missing Files (pick to jump to the nodes), Reload Caches |
 | Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
-| Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
-| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`), Material Library + Assign |
-| any node(s) selected | Create Vop / Wrangle, Create Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
+| Sop, nothing selected | Object Merge Relative, Shift: Absolute (from node paths in the clipboard) |
+| Lop, nothing selected | Fetch Relative (Shift: Absolute), SOP Import (prims at `/geo/<name>`), Material Library + Assign |
+| any node(s) selected | Create Vop / Wrangle, Create Null, Convert Paths, Copy Node Path (Shift: File Path), **Network**: Network Box, Color by Type |
 | several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
 | cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |
@@ -146,8 +183,19 @@ The folder can be copied from user to user as is.
 
 ## Install
 
-Put the `hotbox` folder into `python3.11libs` of your Houdini preferences or package
-(e.g. `~/houdini21.0/python3.11libs/hotbox`). Hotkey or shelf tool:
+**As a Houdini package** (recommended): clone the repo anywhere, then copy `hotbox.json` into
+`$HOUDINI_USER_PREF_DIR/packages/` (e.g. `~/houdini21.0/packages/`, create the folder if needed) and set the path:
+
+```json
+{"HOTBOX_DIR": "D:/tools/hotbox"}
+```
+
+After a Houdini restart there is a **HotBox** shelf with two tools: *HotBox* (give it a hotkey in the Hotkey
+Manager, search "HotBox") and *HotBox Scripts* (the Script Manager). Updating is `git pull`; the tool folder has no
+personal files.
+
+**By hand**: put the `hotbox` folder into `python3.11libs` of your Houdini preferences
+(e.g. `~/houdini21.0/python3.11libs/hotbox`) and make a hotkey or shelf tool:
 
 ```python
 import hotbox

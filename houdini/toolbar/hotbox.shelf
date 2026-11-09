@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- HotBox shelf: comes with the hotbox.json package. Give the tool a hotkey in the Hotkey Manager. -->
+  <toolshelf name="hotbox" label="HotBox">
+    <memberTool name="hotbox_show"/>
+    <memberTool name="hotbox_script_manager"/>
+  </toolshelf>
+
+  <tool name="hotbox_show" label="HotBox" icon="$HOTBOX_DIR/icons/app_dino_dance.svg">
+    <helpText><![CDATA[Popup with your scripts for the current selection / network.]]></helpText>
+    <script scriptType="python"><![CDATA[import hotbox
+hotbox.show()]]></script>
+  </tool>
+
+  <tool name="hotbox_script_manager" label="HotBox Scripts" icon="$HOTBOX_DIR/icons/gear.svg">
+    <helpText><![CDATA[Script Manager: edit the HotBox scripts, turn packages on/off.]]></helpText>
+    <script scriptType="python"><![CDATA[import hotbox
+hotbox.manager()]]></script>
+  </tool>
+</shelfDocument>

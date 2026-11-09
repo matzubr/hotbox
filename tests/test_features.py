@@ -1,0 +1,253 @@
+"""Several lib folders, Shift variants, search, recent scripts, the error window."""
+from unittest.mock import MagicMock
+
+import pytest
+from conftest import write_script
+from hotbox.utils import runner, scripts, settings
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QLabel
+
+
+@pytest.fixture
+def library(tmp_path):
+    lib = tmp_path / "lib"
+    write_script(lib, "all/Sop/merge.py", "#label:Merge Relative\n#shiftlabel:Merge Absolute\n#hotkey:1\n")
+    write_script(lib, "all/flipbook.py", "#label:Flipbook\n#hotkey:f\n")
+    write_script(lib, "all/save.py", "#label:Save HIP\n")
+    write_script(lib, "all/reload.py", "#label:Reload Caches\n")
+    return lib
+
+
+def _hotbox(monkeypatch, library, context="Sop"):
+    from hotbox import main
+    from hotbox.utils import utility
+
+    monkeypatch.setattr(utility, "detectContext", lambda: utility.Context("all", context, context, None))
+    return main.HotBox(lib_dir=library)
+
+
+def _key(key, text="", modifiers=Qt.NoModifier):
+    from hotbox.utils.qt import QEvent
+
+    return QKeyEvent(QEvent.KeyPress, key, modifiers, text)
+
+
+# --- several lib folders -------------------------------------------------------------------------------------------
+
+def test_lib_roots_from_env(tmp_path, monkeypatch):
+    builtin, mine, studio = tmp_path / "builtin", tmp_path / "mine", tmp_path / "studio"
+    for folder in (builtin, mine, studio):
+        folder.mkdir()
+    separator = ";"
+    value = f"{mine}{separator}{tmp_path / 'missing'}{separator}{studio}{separator}{mine}"
+    assert scripts.libRoots(builtin, value) == [mine, studio, builtin]  # order kept, missing/duplicate dropped
+    assert scripts.libRoots(builtin, "") == [builtin]
+    monkeypatch.setattr(scripts.sys, "platform", "linux")
+    assert scripts.splitPathList(f"{mine}:{studio}") == [str(mine), str(studio)]
+    monkeypatch.setattr(scripts.sys, "platform", "win32")
+    assert scripts.splitPathList("C:/tools/lib;D:/studio/lib") == ["C:/tools/lib", "D:/studio/lib"]
+
+
+def test_earlier_folder_hides_the_same_script_and_refs_look_everywhere(tmp_path):
+    mine, builtin = tmp_path / "mine", tmp_path / "builtin"
+    write_script(builtin, "single/null.py", "#label:Built-in Null\n")
+    write_script(builtin, "single/bake.py", "#label:Bake\n")
+    write_script(mine, "single/null.py", "#label:My Null\n")
+    write_script(mine, "multiple/bake.py", "#ref:single/bake.py\n")  # target only in the built-in lib
+    write_script(mine, "multiple/null.py", "#ref:single/null.py\n")  # my version wins for refs too
+
+    single = scripts.scanLibrary([mine, builtin], "single")
+    assert [(s.relpath, s.label, s.root) for s in single] == [("bake.py", "Bake", builtin),
+                                                             ("null.py", "My Null", mine)]
+    multiple = {s.relpath: s for s in scripts.scanLibrary([mine, builtin], "multiple")}
+    assert multiple["bake.py"].runPath == (builtin / "single" / "bake.py").resolve()
+    assert multiple["null.py"].label == "My Null"
+    assert multiple["null.py"].key == "multiple/null.py"
+    assert scripts.scriptRefs([mine, builtin]) == ["single/bake.py", "single/null.py"]
+
+
+def test_hotbox_and_manager_read_every_folder(houdini, tmp_path, monkeypatch):
+    from hotbox import main
+    from hotbox.utils import utility
+    from hotbox.utils.manager import ScriptManager
+
+    mine, builtin = tmp_path / "mine" / "lib", tmp_path / "builtin"
+    write_script(builtin, "all/flipbook.py", "#label:Flipbook\n")
+    write_script(mine, "all/mine.py", "#label:Mine\n")
+    monkeypatch.setattr(main, "LIB_DIR", builtin)
+    monkeypatch.setenv(scripts.PATH_ENV, mine.as_posix())
+    monkeypatch.setattr(utility, "detectContext", lambda: utility.Context("all", "Sop", "Sop", None))
+
+    box = main.HotBox()
+    assert box.lib_roots == [mine, builtin]
+    assert sorted(b.script.label for b in box.script_buttons) == ["Flipbook", "Mine"]
+    box.close()
+
+    manager = ScriptManager(lib_folder=[mine, builtin])
+    names = [manager.files_list.item(i).text() for i in range(manager.files_list.count())]
+    assert names == ["flipbook.py", "mine.py  · mine"]  # where a script comes from, built-in lib unmarked
+    manager.close()
+
+
+# --- Shift --------------------------------------------------------------------------------------------------------
+
+def test_shift_shows_the_shift_labels_and_reaches_the_script(houdini, library, monkeypatch):
+    from hotbox.utils.qt import QEvent, QGuiApplication
+    from PySide6.QtTest import QTest
+
+    ran = MagicMock()
+    monkeypatch.setattr(runner, "runScript", ran)
+    box = _hotbox(monkeypatch, library)
+    merge = next(b for b in box.script_buttons if b.script.relpath == "Sop/merge.py")
+    assert merge.label == "Merge Relative (1)"
+
+    box.keyPressEvent(_key(Qt.Key_Shift, modifiers=Qt.ShiftModifier))
+    assert merge.label == "Merge Absolute (1)"
+    box.keyReleaseEvent(QKeyEvent(QEvent.KeyRelease, Qt.Key_Shift, Qt.NoModifier))
+    assert merge.label == "Merge Relative (1)"
+
+    monkeypatch.setattr(QGuiApplication, "keyboardModifiers", staticmethod(lambda: Qt.ShiftModifier))
+    box.keyPressEvent(_key(Qt.Key_Exclam, "!", Qt.ShiftModifier))  # Shift+1 on a US keyboard
+    QTest.qWait(box.FADE_OUT + 150)
+    assert ran.call_args.args[0] == library / "all" / "Sop" / "merge.py"
+    assert ran.call_args.kwargs["modifiers"] == frozenset({"shift"})
+    assert ran.call_args.kwargs["label"] == "Merge Absolute"
+
+
+def test_modifiers_inside_the_script(tmp_path, hou):
+    import hotbox
+
+    path = write_script(tmp_path, "s.py", body="import hotbox\nRESULT.append(set(hotbox.modifiers()))\n")
+    result = []
+    import builtins
+    builtins.RESULT = result
+    try:
+        assert runner.runScript(path, modifiers={"shift", "ctrl"})
+    finally:
+        del builtins.RESULT
+    assert result == [{"shift", "ctrl"}]
+    assert hotbox.modifiers() == frozenset()
+
+
+# --- search -------------------------------------------------------------------------------------------------------
+
+def test_matches_search():
+    assert scripts.matchesSearch("Reload Caches", "rel")
+    assert scripts.matchesSearch("Reload Caches", "cach rel")
+    assert scripts.matchesSearch("Reload Caches", "кудщ")  # 'relo' typed in the Russian layout
+    assert not scripts.matchesSearch("Reload Caches", "save")
+    assert not scripts.matchesSearch("Reload Caches", "")
+
+
+def test_search_dims_other_buttons_and_enter_runs_the_match(houdini, library, monkeypatch):
+    from PySide6.QtTest import QTest
+
+    ran = MagicMock()
+    monkeypatch.setattr(runner, "runScript", ran)
+    box = _hotbox(monkeypatch, library)
+    QTest.keyClick(box, Qt.Key_Tab)
+    assert box.searchText == ""
+    assert box.central_button.label == "Type to find…"
+
+    box.keyPressEvent(_key(Qt.Key_F, "f"))
+    box.keyPressEvent(_key(Qt.Key_L, "l"))
+    dimmed = {b.script.label: b.dimmed for b in box.script_buttons}
+    assert dimmed == {"Merge Relative": True, "Flipbook": False, "Save HIP": True, "Reload Caches": True}
+    assert box.central_button.label == "Find: fl_"
+    assert ran.call_count == 0  # 'f' is Flipbook's hotkey, but search eats the letters
+
+    box.keyPressEvent(_key(Qt.Key_Backspace))
+    box.keyPressEvent(_key(Qt.Key_Backspace))
+    assert not any(b.dimmed for b in box.script_buttons)
+    box.keyPressEvent(_key(Qt.Key_R, "r"))
+    box.keyPressEvent(_key(Qt.Key_E, "e"))
+    box.keyPressEvent(_key(Qt.Key_L, "l"))
+    assert box._searchMatch.script.label == "Merge Relative"  # the first match in the menu order
+    box.keyPressEvent(_key(Qt.Key_O, "o"))
+    box.keyPressEvent(_key(Qt.Key_Return))
+    QTest.qWait(box.FADE_OUT + 150)
+    assert ran.call_args.args[0] == library / "all" / "reload.py"
+
+
+def test_escape_ends_search_before_closing(houdini, library, monkeypatch):
+    box = _hotbox(monkeypatch, library)
+    box.keyPressEvent(_key(Qt.Key_Tab))
+    box.keyPressEvent(_key(Qt.Key_S, "s"))
+    box.keyPressEvent(_key(Qt.Key_Escape))
+    assert box.searchText is None
+    assert box.isVisible()
+    assert box.central_button.label == "Sop"
+    assert not any(b.dimmed for b in box.script_buttons)
+    box.close()
+
+
+# --- recent -------------------------------------------------------------------------------------------------------
+
+def test_recent_scripts_are_saved_per_user():
+    for relpath in ("a.py", "b.py", "a.py"):
+        settings.addRecent("all", relpath)
+    assert settings.recentScripts("all") == ["a.py", "b.py"]
+    assert settings.recentScripts("single") == []
+    for index in range(settings.RECENT_KEEP + 5):
+        settings.addRecent("all", f"{index}.py")
+    assert len(settings.recentScripts("all")) == settings.RECENT_KEEP
+
+
+def test_recent_row_shows_scripts_of_this_context(houdini, library, monkeypatch):
+    from PySide6.QtTest import QTest
+
+    ran = MagicMock()
+    monkeypatch.setattr(runner, "runScript", ran)
+    for relpath in ("save.py", "Lop/other.py", "Sop/merge.py", "gone.py"):
+        settings.addRecent("all", relpath)
+
+    box = _hotbox(monkeypatch, library)
+    assert [b.script.relpath for b in box.recent_row.buttons] == ["Sop/merge.py", "save.py"]  # newest first
+    box.recent_row.buttons[1].click()
+    QTest.qWait(box.FADE_OUT + 150)
+    assert settings.recentScripts("all")[0] == "save.py"
+
+    data = settings.load()
+    data["recent_count"] = 0
+    settings.save(data)
+    box = _hotbox(monkeypatch, library)
+    assert box.recent_row is None
+    box.close()
+
+
+# --- errors -------------------------------------------------------------------------------------------------------
+
+def test_error_reports_the_line_in_the_script(tmp_path, hou):
+    path = write_script(tmp_path, "lib/all/bad.py", "#label:Bad\n#hotkey:b\n", "x = 1\n\nmissing_name\n")
+    errors = []
+    assert not runner.runScript(path, label="Bad", on_error=errors.append)
+    error = errors[0]
+    assert error.line == 5  # 2 header lines + 3
+    assert error.message == "NameError: name 'missing_name' is not defined"
+    assert "missing_name" in error.traceback
+
+    write_script(tmp_path, "lib/all/syntax.py", "", "def broken(:\n")
+    assert not runner.runScript(tmp_path / "lib/all/syntax.py", on_error=errors.append)
+    assert errors[1].line == 1
+
+
+def test_error_window_opens_the_line_in_the_manager(houdini, tmp_path):
+    from hotbox.utils import errors
+
+    lib = tmp_path / "lib"
+    write_script(lib, "single/other.py", "#label:Other\n")
+    path = write_script(lib, "single/cam/bad.py", "#label:Bad\n#hotkey:b\n", "x = 1\n\nmissing_name\n")
+    reported = []
+    runner.runScript(path, on_error=reported.append)
+
+    window = errors.showScriptError(reported[0], [lib])
+    assert any("bad.py, line 5" in label.text() for label in window.findChildren(QLabel))
+    manager = window.openInManager()
+    assert manager.mode_combobox.currentText() == "single"
+    assert manager.currentScript().relpath == "cam/bad.py"
+    assert manager._codeOpen > 0 or manager._slide.state()
+    cursor = manager.code_edit.textCursor()
+    assert cursor.block().text() == "missing_name"
+    assert len(manager.code_edit.extraSelections()) == 1
+    manager.close()
