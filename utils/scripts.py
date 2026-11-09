@@ -375,6 +375,59 @@ def scriptRefs(lib_roots) -> list[str]:
     return [f"{mode}/{s.relpath}" for mode in MODES for s in scanLibrary(lib_roots, mode) if not s.ref]
 
 
+# --- new scripts ---------------------------------------------------------------------------------------------------
+
+NETWORK_FOLDERS = ("Sop", "Object", "Lop", "Dop", "Cop", "Top", "Driver", "Chop", "Vop")  # context folders of all/multiple
+SCRIPT_TEMPLATES = {
+    "all": "import hou\n\n",
+    "multiple": "import hou\n\nfor node in hou.selectedNodes():\n    pass\n",
+    "single": "import hou\n\nnode = hou.selectedNodes()[0]\n",
+}
+_FOLDER_NAME = re.compile(r"^[\w.-]*$")
+
+
+def scriptFileName(name: str) -> str:
+    """'Bake Camera!' -> 'bake_camera.py'"""
+    stem = re.sub(r"[^\w-]+", "_", name.strip().removesuffix(".py")).strip("_").lower()
+    return f"{stem}.py" if stem else ""
+
+
+def newScriptPath(root: Path, mode: str, folder: str, filename: str) -> tuple[Path | None, str | None]:
+    """Where a new script goes: (path, None) or (None, why it can't be created)"""
+    folder = folder.strip().strip("/")
+    filename = scriptFileName(filename)
+    if mode not in MODES:
+        return None, f"Mode must be one of {', '.join(MODES)}"
+    if not filename:
+        return None, "Give the script a name"
+    if not _FOLDER_NAME.match(folder) or folder in (".", ".."):
+        return None, "Folder: one level only (a network type like Sop, or a node type like cam)"
+    path = Path(root) / mode / folder / filename
+    if path.exists():
+        return None, f"{mode}/{(Path(folder) / filename).as_posix()} already exists"
+    return path, None
+
+
+def createScript(root: Path, mode: str, folder: str, filename: str, label: str = "") -> Path:
+    """New script file with a #label header and a starting body for the mode"""
+    path, error = newScriptPath(root, mode, folder, filename)
+    if error:
+        raise ValueError(error)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = f"#label:{label.strip()}\n\n" if label.strip() else ""
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(header + SCRIPT_TEMPLATES[mode])
+    return path
+
+
+def overrides(lib_roots, root: Path, key: str) -> tuple[list[Path], list[Path]]:
+    """For a script key ('single/cam/x.py') in root: (earlier roots that hide it, later roots it hides)"""
+    roots = asRoots(lib_roots)
+    index = next((i for i, r in enumerate(roots) if Path(r).resolve() == Path(root).resolve()), len(roots))
+    has = [r for r in roots if (Path(r) / key).is_file()]
+    return [r for r in has if roots.index(r) < index], [r for r in has if roots.index(r) > index]
+
+
 def headerLineCount(path: Path) -> int:
     """Lines of the leading comment block (readBody drops them)"""
     return _splitHeader(_readText(path).splitlines())

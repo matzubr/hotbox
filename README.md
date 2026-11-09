@@ -80,6 +80,9 @@ the button): it writes the header back into the script and warns
 about hotkeys already used by scripts shown together with it and about missing icons. For a `#ref` it edits only
 the reference's own header (inherited values are shown greyed out); the **Ref** field sets or changes the target.
 Ref and Package complete existing values inline (Tab accepts), the arrow next to them lists them.
+**+ New script** (Ctrl+N) creates the file right there: name (the file name follows it), mode, folder (existing
+folders, the selected node type or network types are offered) and, with `HOTBOX_PATH`, which lib folder to save in;
+the new script opens in the code panel with a starting body for its mode.
 **Code ›** slides out a code editor (Python highlighting): the script's code, or the target's code for a `#ref`;
 Save writes the header and the code.
 

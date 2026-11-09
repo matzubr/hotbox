@@ -13,6 +13,7 @@ from . import scripts as script_lib
 from . import settings
 from .editors import ChoiceField, CodeEditor
 from .frameless import RoundedWindow, TitleBar
+from .newscript import NewScriptWindow
 from .packages import PackagesWindow
 from .qt import (
     QColor,
@@ -20,11 +21,14 @@ from .qt import (
     QDesktopServices,
     QEasingCurve,
     QGridLayout,
+    QKeySequence,
     QLabel,
     QLineEdit,
     QListWidget,
     QMessageBox,
+    QShortcut,
     Qt,
+    QTextCursor,
     QUrl,
     QVariantAnimation,
     QVBoxLayout,
@@ -159,6 +163,8 @@ class ScriptManager(RoundedWindow, QWidget):
         self.open_button = Button("Open file", buttonColor="#4a4a4a", size=ACTION_SIZE, fontSize=12)
         self.code_button = Button("Code ›", buttonColor="#4a4a4a", size=(100, 36), fontSize=12)
         self.code_button.setToolTip("Edit the code here")
+        self.new_button = Button("+ New script", buttonColor="#4a4a4a", size=(150, 32), fontSize=12)
+        self.new_button.setToolTip("New script file in the library (Ctrl+N)")
 
         form = QGridLayout()
         form.setHorizontalSpacing(10)
@@ -202,7 +208,7 @@ class ScriptManager(RoundedWindow, QWidget):
 
         lists = HLayout([
             panel(self.mode_combobox, self.folders_list, title="Mode / folder"),
-            panel(self.files_list, title="Scripts"),
+            panel(self.files_list, HLayout([self.new_button], align=Qt.AlignHCenter), title="Scripts"),
         ], align=None)
         columns = HLayout([], align=None)
         columns.addLayout(lists, 1)
@@ -236,6 +242,8 @@ class ScriptManager(RoundedWindow, QWidget):
         self.save_button.clicked.connect(self.save)
         self.open_button.clicked.connect(self.openFile)
         self.code_button.clicked.connect(self.toggleCode)
+        self.new_button.clicked.connect(self.newScript)
+        QShortcut(QKeySequence.New, self, self.newScript)
         self.updateChoices()
         self.updateScripts()
 
@@ -534,6 +542,24 @@ class ScriptManager(RoundedWindow, QWidget):
         self.files_list.setCurrentRow(file_row)
         self.updateInfo()
 
+    def newScript(self):
+        """Window for a new script, in the current mode and folder; the new file is selected and its code shown"""
+        self.maybeSaveCode()
+        folder = self.currentFolder() or ""
+        self.new_window = NewScriptWindow(self.roots, mode=self.mode_combobox.currentText(), folder=folder,
+                                          stylesheet=bodyStyle(), parent=self)
+        self.new_window.created.connect(self.onScriptCreated)
+        center = self.mapToGlobal(self.rect().center())
+        self.new_window.move(center.x() - self.new_window.width() // 2, center.y() - self.new_window.height() // 2)
+        self.new_window.show()
+        return self.new_window
+
+    def onScriptCreated(self, path: Path):
+        self.updateChoices()
+        self.showScript(path)
+        self.code_edit.setFocus()
+        self.code_edit.moveCursor(QTextCursor.End)
+
     def openPackages(self):
         """Gear: turn packages on/off; the list greys out scripts of turned off packages"""
         self.packages_window = PackagesWindow(self.roots, parent=self)
@@ -552,6 +578,7 @@ class ScriptManager(RoundedWindow, QWidget):
             if match is None:
                 continue
             self.mode_combobox.setCurrentIndex(mode_index)
+            self.updateScripts()  # also when the mode was already selected: the file may be new
             folders = [self.folders_list.item(i).text() for i in range(self.folders_list.count())]
             self.folders_list.setCurrentRow(folders.index(match.context or self.ROOT_ITEM))
             self.files_list.setCurrentRow([s.relpath for s in self.folderScripts()].index(match.relpath))

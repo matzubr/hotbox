@@ -251,3 +251,62 @@ def test_error_window_opens_the_line_in_the_manager(houdini, tmp_path):
     assert cursor.block().text() == "missing_name"
     assert len(manager.code_edit.extraSelections()) == 1
     manager.close()
+
+
+# --- new scripts --------------------------------------------------------------------------------------------------
+
+def test_new_script_names_and_checks(tmp_path):
+    assert scripts.scriptFileName("Bake Camera!") == "bake_camera.py"
+    assert scripts.scriptFileName("  ") == ""
+    lib = tmp_path / "lib"
+    write_script(lib, "single/cam/bake.py", "#label:Bake\n")
+    assert scripts.newScriptPath(lib, "single", "cam", "Bake")[1] == "single/cam/bake.py already exists"
+    assert scripts.newScriptPath(lib, "single", "cam/deeper", "x")[1].startswith("Folder: one level only")
+    assert scripts.newScriptPath(lib, "single", "..", "x")[1].startswith("Folder")
+    assert scripts.newScriptPath(lib, "single", "", "")[1] == "Give the script a name"
+    assert scripts.newScriptPath(lib, "single", "/cam/", "New One") == (lib / "single" / "cam" / "new_one.py", None)
+
+    path = scripts.createScript(lib, "multiple", "Sop", "split.py", "Split Pieces")
+    assert path.read_text() == "#label:Split Pieces\n\n" + scripts.SCRIPT_TEMPLATES["multiple"]
+    assert scripts.scanLibrary(lib, "multiple")[0].label == "Split Pieces"
+
+
+def test_new_script_overrides_between_lib_folders(tmp_path):
+    mine, builtin = tmp_path / "mine", tmp_path / "builtin"
+    write_script(builtin, "single/null.py")
+    assert scripts.overrides([mine, builtin], mine, "single/null.py") == ([], [builtin])
+    write_script(mine, "single/null.py")
+    assert scripts.overrides([mine, builtin], builtin, "single/null.py") == ([mine], [])
+
+
+def test_new_script_window_creates_and_manager_shows_it(houdini, tmp_path):
+    from hotbox.utils.manager import ScriptManager
+
+    lib = tmp_path / "lib"
+    write_script(lib, "single/cam/bake.py", "#label:Bake\n")
+    manager = ScriptManager(lib_folder=lib)
+    manager.mode_combobox.setCurrentText("single")
+    window = manager.newScript()
+    assert window.mode == "single" and window.folder_lineedit.text() == "cam"  # where the manager is
+    assert not window.create_button.isEnabled()
+
+    window.label_lineedit.setText("Look Through")
+    window.label_lineedit.textEdited.emit("Look Through")
+    assert window.file_lineedit.text() == "look_through.py"  # follows the label
+    assert window.create_button.isEnabled()
+    window.file_lineedit.setText("bake.py")
+    window.file_lineedit.textEdited.emit("bake.py")
+    assert "already exists" in window.warning_label.text() and not window.create_button.isEnabled()
+    window.file_lineedit.setText("look.py")
+    window.file_lineedit.textEdited.emit("look.py")
+    window.label_lineedit.setText("Look Through Cam")
+    window.label_lineedit.textEdited.emit("Look Through Cam")
+    assert window.file_lineedit.text() == "look.py"  # typed by hand: no longer follows
+
+    path = window.create()
+    assert path == lib / "single" / "cam" / "look.py"
+    assert manager.currentScript().relpath == "cam/look.py"
+    assert manager.name_lineedit.text() == "Look Through Cam"
+    assert "node = hou.selectedNodes()[0]" in manager.code_edit.toPlainText()
+    assert manager._codeOpen > 0 or manager._slide.state()
+    manager.close()

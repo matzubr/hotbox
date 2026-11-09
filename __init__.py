@@ -28,6 +28,7 @@ _SUBMODULES = (
     "utils.widgets",
     "utils.frameless",
     "utils.packages",
+    "utils.newscript",
     "utils.manager",
     "utils.errors",
     "common.panes",
