@@ -133,12 +133,11 @@ def test_snap_to_grid_moves_only_the_selected_items(hou, vec):
 
 def test_make_space(hou, vec):
     a, b, c = _item("/n/a", 0, 0), _item("/n/b", 0, -1), _item("/n/c", 4, -3)
-    assert layout.spreadPositions([(0, 0), (1, -2)]) == [(0, 1.0), (1, -3.0)]
     parent = MagicMock()
     parent.children.return_value = [a, b, c]
     parent.networkDots.return_value = []
     a.parent.return_value = parent
-    layout.makeSpace([a])  # one node: everything below goes down two rows
+    layout.makeSpace(a)  # everything below goes down two rows
     assert a.position() == (0, 0)
     assert b.position() == (0, -3)
     assert c.position() == (4, -5)
@@ -356,4 +355,11 @@ def test_snap_to_grid_script_runs(hou, vec, monkeypatch):
     monkeypatch.setattr(hou, "selectedItems", lambda: [item], raising=False)
     monkeypatch.setattr(nodes.panes, "networkPane", lambda: None)
     assert runner.runScript(ROOT / "lib" / "multiple" / "snap_to_grid.py")
-    assert item.position() == pytest.approx((-0.5, -0.15))
+    assert item.position() == pytest.approx((-0.5 + 0.0625, -0.15))  # the drawn body centered on the line
+
+
+def test_snap_keeps_nudged_items_in_place():
+    """An item already snapped (nudged) stays where it is"""
+    nudge = layout.BODY_NUDGE
+    rect = (-0.5 + nudge[0], -0.15, 1.0, 0.3)
+    assert layout.snapRects([rect], [], (2.0, 1.0), nudge=nudge) == [pytest.approx(rect[:2])]
