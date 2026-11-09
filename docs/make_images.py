@@ -111,8 +111,7 @@ def main():
     saveGif(frames, DOCS / "hover.gif")
 
     script_manager = manager.ScriptManager(lib_folder=Path("lib"))
-    script_manager._fadeAnimation.stop()
-    script_manager.setWindowOpacity(1)
+    script_manager.finishPopIn()
     folders = [script_manager.folders_list.item(i).text() for i in range(script_manager.folders_list.count())]
     script_manager.folders_list.setCurrentRow(folders.index("Object"))
     files = [script_manager.files_list.item(i).text() for i in range(script_manager.files_list.count())]
@@ -122,8 +121,7 @@ def main():
     onBackground(script_manager, pad=0).save((DOCS / "manager.png").as_posix())
 
     packages = script_manager.openPackages()
-    packages._fadeAnimation.stop()
-    packages.setWindowOpacity(1)
+    packages.finishPopIn()
     QTest.qWait(300)
     app.processEvents()
     onBackground(packages, pad=0).save((DOCS / "packages_window.png").as_posix())

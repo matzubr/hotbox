@@ -75,7 +75,7 @@ in the tooltip; the tests check every `#ref` in `lib/`.
 ![Script Manager](docs/manager.png)
 
 Or edit them in the **Script Manager** (bottom right button, the DinoWrite look, with a live animated preview of
-the button): it writes the header back into the script and warns
+the button; like the buttons, its windows grow in from the center with a spring and shrink away on close): it writes the header back into the script and warns
 about hotkeys already used by scripts shown together with it and about missing icons. For a `#ref` it edits only
 the reference's own header (inherited values are shown greyed out); the **Ref** field sets or changes the target.
 Ref and Package complete existing values inline (Tab accepts), the arrow next to them lists them.

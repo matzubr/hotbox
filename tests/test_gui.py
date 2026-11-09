@@ -561,3 +561,42 @@ def test_closing_shrinks_buttons_farthest_first(houdini, hou, library, monkeypat
     closed.assert_called_once()
     box._closeAnimated = True
     box.close()
+
+
+def test_script_manager_grows_in_and_shrinks_away(houdini, library, qapp):
+    from hotbox.utils.frameless import PopProxy
+    from hotbox.utils.manager import ScriptManager
+    from PySide6.QtTest import QTest
+
+    manager = ScriptManager(lib_folder=library)
+    assert manager.windowOpacity() == 0 or manager._popPending  # invisible until its picture has grown in
+    QTest.qWait(30)
+    proxy = manager._popProxy
+    assert isinstance(proxy, PopProxy) and proxy.isVisible()
+    assert proxy.geometry().contains(manager.geometry())  # room for the spring
+    peak = 0.0
+    for _ in range(30):
+        QTest.qWait(20)
+        if manager._popProxy is not None:
+            peak = max(peak, manager._popProxy.scale)
+    assert peak > 1.0  # spring overshoot
+    assert manager._popProxy is None
+    assert manager.isVisible()
+
+    manager.close()
+    assert manager.isVisible()  # shrinking first
+    assert manager._popProxy is not None and manager._popProxy.scale == 1.0
+    QTest.qWait(manager.POP_OUT_MS + 150)
+    assert not shiboken6.isValid(manager) or not manager.isVisible()
+
+
+def test_finish_pop_in_skips_the_animation(houdini, library, qapp):
+    from hotbox.utils.manager import ScriptManager
+    from PySide6.QtTest import QTest
+
+    manager = ScriptManager(lib_folder=library)
+    manager.finishPopIn()
+    QTest.qWait(30)
+    assert manager._popProxy is None
+    manager._popClosed = True
+    manager.close()
