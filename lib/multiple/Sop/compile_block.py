@@ -3,7 +3,7 @@
 #group:Network
 #textcolor:#ffd59e
 #hotkey:k
-#icon:SOP_compile_end
+#icon:compile.svg
 
 # Compile Begin on every input into the selected SOPs, Compile End after them (for-each blocks get Multithread)
 import hou

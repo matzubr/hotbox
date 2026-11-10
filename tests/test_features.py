@@ -312,7 +312,7 @@ def test_icon_browser_search_and_choose(houdini, icons_zip, library):
     assert browser.currentName() == "OBJ_camera"
 
     browser.categories_list.setCurrentRow(browser.categories.index("All"))
-    browser.search_lineedit.setText("merge")
+    browser.search_lineedit.setText("object_merge")
     assert browser.model.names == ["SOP_object_merge"]
     browser.search_lineedit.setText("")
     assert "save.svg" in browser.model.names and "LOP_fetch" in browser.model.names

@@ -3,7 +3,7 @@
 #textcolor:#ffb492
 #buttoncolor:#1f1a12
 #hotkey:2
-#icon:SOP_object_merge
+#icon:object-merge.svg
 
 from hotbox.common import nodes
 

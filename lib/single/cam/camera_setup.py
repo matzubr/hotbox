@@ -3,7 +3,7 @@
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:3
-#icon:OBJ_camera
+#icon:camera.svg
 
 import re
 from pathlib import Path

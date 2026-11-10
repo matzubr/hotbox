@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import re
+import sys
 from pathlib import Path
 
 import hou
@@ -13,9 +15,9 @@ from .qt import (
     QFontDatabase,
     QFontMetrics,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QIcon,
+    QImage,
     QKeySequence,
     QPainter,
     QPainterPath,
@@ -29,6 +31,7 @@ from .qt import (
     Qt,
     QTimer,
     QVariantAnimation,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -43,6 +46,8 @@ FONT_FAMILY = "Nunito"
 FONT_SIZE = 14  # points
 CLOSE_KEYS = (int(Qt.Key_Escape), int(Qt.Key_QuoteLeft))  # Esc and `
 WHITE = QColor("#ffffff")
+NEUTRAL_TEXT = "#e8e8e8"  # script buttons: text is neutral, the script color goes to the icon and the side stripe
+RECENT_MODIFIER = "⌘" if sys.platform == "darwin" else "Ctrl+"  # Recent buttons run with Ctrl+1..4 (Cmd on macOS)
 
 _font_loaded = False
 
@@ -174,6 +179,51 @@ def resolveIcon(icon) -> QIcon | None:
     return None
 
 
+def keycapText(hotkey: str | None) -> str:
+    """'g' -> 'G', '1' -> '1', 'F5' -> 'F5'"""
+    if not hotkey:
+        return ""
+    return hotkey.upper() if len(hotkey) == 1 else hotkey
+
+
+def underlineIndex(label: str, hotkey: str | None) -> int | None:
+    """Where the hotkey letter is in the label (like Windows menus): a word start first, else anywhere"""
+    if not hotkey or len(hotkey) != 1 or not hotkey.isalnum():
+        return None
+    key = hotkey.lower()
+    for match in re.finditer(r"\b\w", label):
+        if match.group().lower() == key:
+            return match.start()
+    index = label.lower().find(key)
+    return index if index >= 0 else None
+
+
+def keycapFont(size: float = 9.5) -> QFont:
+    font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+    font.setPointSizeF(size)
+    font.setBold(True)
+    return font
+
+
+_tinted: dict = {}
+
+
+def tintedPixmap(icon: QIcon, size: int, color: QColor, ratio: float = 1.0) -> QPixmap:
+    """The icon in one color (line icons take the script color whatever color the file has)"""
+    key = (icon.cacheKey(), size, color.name(), ratio)
+    if key not in _tinted:
+        pixels = max(1, round(size * ratio))
+        image = icon.pixmap(QSize(pixels, pixels)).toImage().convertToFormat(QImage.Format_ARGB32_Premultiplied)
+        painter = QPainter(image)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(image.rect(), color)
+        painter.end()
+        pixmap = QPixmap.fromImage(image)
+        pixmap.setDevicePixelRatio(ratio)
+        _tinted[key] = pixmap
+    return _tinted[key]
+
+
 class Button(QPushButton):
     """Rounded button painted by hand so it can animate:
 
@@ -197,12 +247,27 @@ class Button(QPushButton):
     DISAPPEAR_OVERSHOOT = 1.2  # swell before shrinking
     ICON_SIZE = 28
     DIM_OPACITY = 0.22  # buttons that don't match the search
+    # "row" style (script buttons): stripe | icon | text on one line, left aligned | keycap
+    ROW_PAD = 12
+    ROW_ICON = 22
+    STRIPE = 4
+    KEYCAP_HEIGHT = 20
 
     def __init__(self, label: str = "ButtonText", buttonColor: str = "#222222", textColor: str = "#e8e8e8",
-                 icon=None, parent=None, size: tuple[int, int] | None = None, fontSize: float = FONT_SIZE):
+                 icon=None, parent=None, size: tuple[int, int] | None = None, fontSize: float = FONT_SIZE,
+                 style: str = "center", hotkey: str | None = None, accent: str | None = None,
+                 keycap: str | None = None):
+        """style 'center': icon and text in the middle (up to two lines).
+        style 'row': one line, left aligned, the hotkey in a keycap on the right and underlined in the text;
+        accent: color of the side stripe and of line icons (svg); keycap: keycap text other than the hotkey."""
         super().__init__(parent)
         self.buttonWidth, self.buttonHeight = size or (self.WIDTH, self.HEIGHT)
         self.fontSize = fontSize
+        self.style = style
+        self.hotkey = hotkey
+        self.keycap = keycap
+        self.accentColor = QColor(accent) if accent else None
+        self.tintIcon = False
         self.hover = 0.0
         self.ripple = 1.0  # 1: finished
         self.press = 0.0
@@ -268,6 +333,7 @@ class Button(QPushButton):
         self.update()
         if self.appear != 1.0 and self.parentWidget() is not None:
             self.parentWidget().update()  # group frames fade in with their buttons
+            self.window().update()  # and the hotbox backdrop
         overlay = self.overlay()
         if overlay is not None:
             overlay.update()
@@ -278,16 +344,45 @@ class Button(QPushButton):
         qicon = resolveIcon(icon)
         if icon and qicon is None and not isinstance(icon, (QIcon, QPixmap)):
             print(f"HotBox: no icon '{icon}' (not in icons/ and not a Houdini icon)")
+        # Line icons (svg files) take the accent color; Houdini icons and pictures keep their own colors
+        self.tintIcon = isinstance(icon, str) and icon.lower().endswith(".svg") and findIconFile(icon) is not None
         self.setIcon(qicon or QIcon())
 
     def updateText(self, text: str):
         self.label = text
         self.setText(text)
-        icon_width = self.ICON_SIZE + 6 if not self.icon().isNull() else 0
-        self.lines, self.labelFont = fitText(text, self.buttonWidth - 24 - icon_width, size=self.fontSize)
+        if self.style == "row":
+            self.lines, self.labelFont = fitText(text, int(self.rowTextWidth()), max_lines=1, size=self.fontSize)
+        else:
+            icon_width = self.ICON_SIZE + 6 if not self.icon().isNull() else 0
+            self.lines, self.labelFont = fitText(text, self.buttonWidth - 24 - icon_width, size=self.fontSize)
         if isElided(self.lines) and not self.toolTip():
             self.setToolTip(text)
         self.update()
+
+    def setHotkey(self, hotkey: str | None, keycap: str | None = None):
+        self.hotkey = hotkey or None
+        self.keycap = keycap
+        self.updateText(self.label)
+
+    def setAccent(self, color: str | None):
+        self.accentColor = QColor(color) if color else None
+        self.update()
+
+    def keycapLabel(self) -> str:
+        return self.keycap if self.keycap is not None else keycapText(self.hotkey)
+
+    def keycapWidth(self) -> float:
+        text = self.keycapLabel()
+        if not text:
+            return 0.0
+        return max(float(self.KEYCAP_HEIGHT), QFontMetrics(keycapFont()).horizontalAdvance(text) + 10.0)
+
+    def rowTextWidth(self) -> float:
+        """Room for the text of a row button: between the icon and the keycap"""
+        left = self.ROW_PAD + self.STRIPE + (self.ROW_ICON + 8 if not self.icon().isNull() else 0)
+        keycap = self.keycapWidth()
+        return self.buttonWidth - left - self.ROW_PAD - (keycap + 8 if keycap else 0)
 
     def updateColors(self, buttonColor="#222222", textColor="#e8e8e8"):
         self.baseColor = QColor(buttonColor)
@@ -354,6 +449,10 @@ class Button(QPushButton):
             painter.fillRect(rect, gradient)
             painter.restore()
 
+        if self.style == "row":
+            self.paintRow(painter, rect, path)
+            painter.restore()
+            return
         painter.setFont(self.labelFont)
         painter.setPen(self.textColor)
         metrics = QFontMetrics(self.labelFont)
@@ -368,6 +467,51 @@ class Button(QPushButton):
         text_rect = QRectF(x + icon_size + gap, center.y() - text_height / 2, text_width, text_height)
         painter.drawText(text_rect, Qt.AlignCenter, "\n".join(self.lines))
         painter.restore()
+
+    def paintRow(self, painter: QPainter, rect: QRectF, path: QPainterPath):
+        """stripe | icon | text (hotkey letter underlined) | keycap"""
+        center_y = rect.center().y()
+        if self.accentColor is not None:
+            painter.save()
+            painter.setClipPath(path)
+            painter.fillRect(QRectF(rect.left(), rect.top(), self.STRIPE, rect.height()), self.accentColor)
+            painter.restore()
+        x = rect.left() + self.STRIPE + self.ROW_PAD
+        icon = self.icon()
+        if not icon.isNull():
+            top = center_y - self.ROW_ICON / 2
+            if self.tintIcon and self.accentColor is not None:
+                ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
+                painter.drawPixmap(QPointF(x, top), tintedPixmap(icon, self.ROW_ICON, self.accentColor, ratio))
+            else:
+                icon.paint(painter, int(x), int(top), self.ROW_ICON, self.ROW_ICON)
+            x += self.ROW_ICON + 8
+
+        line = self.lines[0] if self.lines else ""
+        painter.setFont(self.labelFont)
+        painter.setPen(self.textColor)
+        metrics = QFontMetrics(self.labelFont)
+        text_rect = QRectF(x, rect.top(), self.rowTextWidth() + 1, rect.height())
+        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, line)
+        index = underlineIndex(self.label, self.hotkey) if self.keycap is None else None
+        if index is not None and index < len(line) and not (line.endswith("…") and index >= len(line) - 1):
+            start = x + metrics.horizontalAdvance(line[:index])
+            width = metrics.horizontalAdvance(line[index])
+            baseline = center_y - metrics.height() / 2 + metrics.ascent() + 2
+            painter.fillRect(QRectF(start, baseline, width, 1.6), self.textColor)
+
+        text = self.keycapLabel()
+        if text:
+            width = self.keycapWidth()
+            cap = QRectF(rect.right() - self.ROW_PAD - width, center_y - self.KEYCAP_HEIGHT / 2, width,
+                         self.KEYCAP_HEIGHT)
+            painter.setPen(QColor(255, 255, 255, 70))
+            painter.setBrush(QColor(0, 0, 0, 60))
+            painter.drawRoundedRect(cap.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+            painter.setBrush(Qt.NoBrush)
+            painter.setFont(keycapFont())
+            painter.setPen(QColor(232, 232, 232, 210))
+            painter.drawText(cap, Qt.AlignCenter, text)
 
     # --- animation ----------------------------------------------------------------------------------------------
 
@@ -446,41 +590,50 @@ class AnimationOverlay(QWidget):
 
 
 class ScriptButton(Button):
-    """Button that runs a library script"""
+    """Button that runs a library script: one line, the script color on the stripe and the icon, a keycap"""
 
     BROKEN_TEXT = "#ff6b6b"
+    SIZE = (230, 44)
+    FONT = 13
 
-    def __init__(self, script: script_lib.Script, parent=None):
-        label = f"{script.label} ({script.hotkey})" if script.hotkey else script.label
-        text_color = self.BROKEN_TEXT if script.error else script.textcolor
-        super().__init__(label, script.buttoncolor, text_color, script.icon, parent)
+    def __init__(self, script: script_lib.Script, parent=None, size=None, fontSize=None, keycap=None):
+        text_color = self.BROKEN_TEXT if script.error else NEUTRAL_TEXT
+        super().__init__(script.label, script.buttoncolor, text_color, script.icon, parent, size=size or self.SIZE,
+                         fontSize=fontSize or self.FONT, style="row", hotkey=script.hotkey, accent=script.textcolor,
+                         keycap=keycap)
         self.script = script
-        self.hotkey = script.hotkey
-        tooltip = script.relpath
-        if script.ref:
-            tooltip += f"\n→ {script.ref}"
-        if script.error:
-            tooltip += f"\n{script.error}"
-        if script.root is not None:
-            tooltip += f"\n{script.root.as_posix()}"
-        self.setToolTip(tooltip)
+        self.setToolTip(scriptTooltip(script))
+
+
+def scriptTooltip(script: script_lib.Script) -> str:
+    """What the script does (its first comment / docstring), what it works on, where it is"""
+    lines = []
+    description = script_lib.scriptDescription(script.runPath) if script.runPath else None
+    if description:
+        lines.append(description)
+    lines.append(script_lib.worksOn(script))
+    where = script.relpath + (f"  →  {script.ref}" if script.ref else "")
+    lines.append(where)
+    if script.error:
+        lines.append(script.error)
+    return "\n".join(lines)
 
 
 class ScriptGrid(QWidget):
-    """Buttons on one grid, so every row is on the same level in all columns.
+    """Buttons in columns of the same width, top aligned.
 
     Columns go top to bottom: context scripts first, then root scripts in their own column(s); a column
     takes at most MAX_ROWS buttons, then the next one starts. #group blocks are never split.
-    Gaps are grid rows/columns of their own: the gap above a group makes room for its frame and caption,
-    and the same gap is used in every column, so rows stay aligned.
+    Each column goes down at its own pace: the same small gap between buttons, more only where a group frame and
+    its caption need room (a group in one column doesn't leave holes in the others).
     """
 
     MAX_ROWS = 6
-    ROW_GAP = 12  # between buttons
+    ROW_GAP = 10  # between buttons
     COLUMN_GAP = 14
-    CAPTION_HEIGHT = 16
+    CAPTION_HEIGHT = 22
     FRAME_PAD = 8  # between buttons and their group frame
-    FRAME_GAP = 8  # between a group frame and the buttons/frames around it
+    FRAME_GAP = 14  # between a group frame and the buttons/frames around it
 
     def __init__(self, scripts: list[script_lib.Script], context: str = "", parent: QWidget = None):
         super().__init__(parent)
@@ -500,23 +653,25 @@ class ScriptGrid(QWidget):
                         self.groups.append((name, buttons))
                 self.columns.append(blocks)
 
-        layout = QGridLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        for column_index, column in enumerate(self.columns):
-            row = 0
-            for _name, buttons in column:
-                for button in buttons:
-                    layout.addWidget(button, 2 * row + 1, 2 * column_index + 1)
-                    row += 1
-        for index, gap in enumerate(self.rowGaps()):
-            layout.setRowMinimumHeight(2 * index, gap)
         column_gaps = self.columnGaps()
-        for index, gap in enumerate(column_gaps):
-            layout.setColumnMinimumWidth(2 * index, gap)
-        # Extra space (if the widget is bigger than needed) goes to the end, gaps stay as computed
-        layout.setRowStretch(2 * len(self.rowGaps()), 1)
-        layout.setColumnStretch(2 * len(column_gaps), 1)
+        for column_index, column in enumerate(self.columns):
+            layout.addSpacing(column_gaps[column_index])
+            rows = QVBoxLayout()
+            rows.setContentsMargins(0, 0, 0, 0)
+            rows.setSpacing(0)
+            buttons = [button for _name, block in column for button in block]
+            for button, gap in zip(buttons + [None], self.columnRowGaps(column)):
+                rows.addSpacing(gap)
+                if button is not None:
+                    rows.addWidget(button)
+            rows.addStretch(1)  # columns start at the top, each one at its own pace
+            layout.addLayout(rows)
+        if column_gaps:
+            layout.addSpacing(column_gaps[-1])
+        layout.addStretch(1)
 
         for key, paths in script_lib.duplicateHotkeys(in_context + root).items():
             print(f"HotBox: hotkey '{key}' is used by several scripts, the last one wins: {', '.join(paths)}")
@@ -538,24 +693,23 @@ class ScriptGrid(QWidget):
                 rows.append((name, index == 0, index == len(buttons) - 1))
         return rows
 
-    def rowGaps(self) -> list[int]:
-        """Height of the gap above each button row and below the last one"""
-        row_count = max((sum(len(b) for _, b in column) for column in self.columns), default=0)
-        gaps = [0] + [self.ROW_GAP] * (row_count - 1) + [0] if row_count else []
+    def columnRowGaps(self, column) -> list[int]:
+        """Height of the gap above each button of a column and below the last one: the same small gap between
+        buttons everywhere, more where a group frame and its caption need room"""
+        rows = self._columnRows(column)
         frame_top = self.CAPTION_HEIGHT + 4
-        for column in self.columns:
-            rows = self._columnRows(column)
-            for boundary in range(len(rows) + 1):
-                above = rows[boundary - 1] if boundary > 0 else None
-                below = rows[boundary] if boundary < len(rows) else None
-                need = 0
-                if above and above[0] and above[2]:
-                    need += self.FRAME_PAD  # frame bottom of the group above
-                if below and below[0] and below[1]:
-                    need += frame_top  # caption and frame top of the group below
-                if need and above and below:
-                    need += self.FRAME_GAP
-                gaps[boundary] = max(gaps[boundary], need)
+        gaps = []
+        for boundary in range(len(rows) + 1):
+            above = rows[boundary - 1] if boundary > 0 else None
+            below = rows[boundary] if boundary < len(rows) else None
+            need = 0
+            if above and above[0] and above[2]:
+                need += self.FRAME_PAD  # frame bottom of the group above
+            if below and below[0] and below[1]:
+                need += frame_top  # caption and frame top of the group below
+            if need and above and below:
+                need += self.FRAME_GAP
+            gaps.append(max(need, self.ROW_GAP) if above and below else need)
         return gaps
 
     def columnGaps(self) -> list[int]:
@@ -603,29 +757,36 @@ def paintGroupFrame(painter: QPainter, frame: QRectF, name: str, buttons=()) -> 
     painter.save()
     painter.setOpacity(shown)
     painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor(255, 255, 255, 14))
+    painter.setBrush(QColor(255, 255, 255, 16))
     painter.drawRoundedRect(frame, 12, 12)
-    painter.setFont(buttonFont(FONT_SIZE - 4))
-    painter.setPen(QColor(232, 232, 232, 150))
-    caption = QRectF(frame.left() + 10, frame.top() + 3, frame.width() - 20, ScriptGrid.CAPTION_HEIGHT)
+    painter.setFont(buttonFont(FONT_SIZE - 2))
+    painter.setPen(QColor(240, 240, 240, 230))
+    caption = QRectF(frame.left() + 12, frame.top() + 2, frame.width() - 24, ScriptGrid.CAPTION_HEIGHT)
     painter.drawText(caption, Qt.AlignLeft | Qt.AlignVCenter, name)
     painter.restore()
 
 
 class RecentRow(QWidget):
-    """The last run scripts of this mode in a row, framed like a group"""
+    """The last run scripts of this mode in a row, smaller, framed like a group; Ctrl+1..4 run them"""
 
     CAPTION = "Recent"
+    SIZE = (180, 34)
+    FONT = 11
 
     def __init__(self, scripts: list[script_lib.Script], parent: QWidget = None):
         super().__init__(parent)
-        self.buttons = [ScriptButton(script, parent=self) for script in scripts]
+        self.buttons = [ScriptButton(script, parent=self, size=self.SIZE, fontSize=self.FONT,
+                                     keycap=f"{RECENT_MODIFIER}{index + 1}") for index, script in enumerate(scripts)]
         layout = QHBoxLayout(self)
         pad = ScriptGrid.FRAME_PAD
         layout.setContentsMargins(pad, ScriptGrid.CAPTION_HEIGHT + 4, pad, pad)
-        layout.setSpacing(ScriptGrid.COLUMN_GAP)
+        layout.setSpacing(ScriptGrid.COLUMN_GAP - 4)
         for button in self.buttons:
             layout.addWidget(button)
+
+    def buttonForNumber(self, number: int):
+        """Button of Ctrl+number (1-based), None if there is no such one"""
+        return self.buttons[number - 1] if 1 <= number <= len(self.buttons) else None
 
     def paintEvent(self, event):
         if not self.buttons:

@@ -2,7 +2,7 @@
 #package:LV-Tools
 #textcolor:#ffa0e6
 #hotkey:l
-#icon:SOP_file
+#icon:file.svg
 
 # File nodes for the files this ROP Geometry Output wrote: one per wedge (`@wedgeindex` in the path), the ones on disk
 # (none yet: as many as the Wedge Count above), and a Switch to flip through them. Next to the TOP network.

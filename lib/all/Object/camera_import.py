@@ -3,7 +3,7 @@
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:w
-#icon:OBJ_camera
+#icon:camera.svg
 
 import os
 import sys

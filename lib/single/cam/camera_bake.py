@@ -1,9 +1,9 @@
-#label:Camera Bake Chop
+#label:Bake Chop
 #group:Bake
 #textcolor:#ffffff
 #buttoncolor:#22253b
 #hotkey:1
-#icon:OBJ_camera
+#icon:camera.svg
 
 import hou
 

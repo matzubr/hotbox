@@ -1,4 +1,4 @@
-#label:Make Space Below
+#label:Space Below
 #package:LV-Tools
 #group:Network
 #textcolor:#ffd59e

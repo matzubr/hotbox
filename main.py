@@ -15,11 +15,14 @@ import hou
 
 from .utils import errors, manager, runner, scripts, settings, utility, widgets
 from .utils.qt import (
+    QColor,
     QCursor,
     QDesktopServices,
     QEvent,
     QGuiApplication,
+    QPainter,
     QPoint,
+    QRect,
     Qt,
     QTimer,
     QUrl,
@@ -46,6 +49,10 @@ class HotBox(QWidget):
     DISAPPEAR_MAX_DELAY = 140
     FADE_OUT = max(widgets.Button.PRESS_MS, DISAPPEAR_MAX_DELAY + widgets.Button.DISAPPEAR_MS)  # whole closing, ms
     SEARCH_KEYS = (int(Qt.Key_Tab), int(Qt.Key_Backtab))
+    # Backdrop under the buttons: the network behind doesn't read as part of the menu
+    BACKDROP = QColor(24, 24, 24, 232)  # ~90 % opaque
+    BACKDROP_PAD = 14
+    BACKDROP_RADIUS = 18
 
     def __init__(self, lib_dir: Path | None = None):
         """lib_dir: only this lib folder (tests, images); default: HOTBOX_PATH folders + the built-in lib/"""
@@ -136,7 +143,8 @@ class HotBox(QWidget):
         self.recent_row = self.recentRow(library, data)
         self.script_buttons = self.scripts_buttons.buttons + (self.recent_row.buttons if self.recent_row else [])
 
-        self.open_hotbox_button = widgets.Button("Open HotBox folder")
+        self.open_hotbox_button = widgets.Button("Open Folder")
+        self.open_hotbox_button.setToolTip("The HotBox lib folder (yours with HOTBOX_PATH)")
         self.central_button = widgets.Button(self.context.title, icon=self.context.icon)
         self.script_manager_button = widgets.Button("Script Manager")
 
@@ -170,6 +178,30 @@ class HotBox(QWidget):
         shown = {script.relpath: script for script in in_context + root}
         recent = [shown[relpath] for relpath in settings.recentScripts(self.mode, data) if relpath in shown][:count]
         return widgets.RecentRow(recent, parent=self) if recent else None
+
+    def backdropRect(self) -> QRect:
+        """Around all the buttons and group frames"""
+        rect = QRect()
+        for widget in (self.scripts_buttons, self.recent_row, self.open_hotbox_button, self.central_button,
+                       self.script_manager_button):
+            if widget is not None and widget.isVisible():
+                rect = rect.united(widget.geometry())
+        pad = self.BACKDROP_PAD
+        return rect.adjusted(-pad, -pad, pad, pad)
+
+    def paintEvent(self, event):
+        """The backdrop fades in and out with the buttons"""
+        buttons = self.findChildren(widgets.Button)
+        shown = max((min(1.0, max(0.0, b.appear)) for b in buttons), default=1.0)
+        if shown <= 0:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setOpacity(shown)
+        painter.setPen(QColor(255, 255, 255, 18))
+        painter.setBrush(self.BACKDROP)
+        painter.drawRoundedRect(self.backdropRect(), self.BACKDROP_RADIUS, self.BACKDROP_RADIUS)
+        painter.end()
 
     def mousePressEvent(self, event):
         """A click inside the hotbox but not on a button closes it, like a click outside.
@@ -229,6 +261,11 @@ class HotBox(QWidget):
         if self.searchText is not None:
             self.searchKey(event)
             return
+        recent = self.recentButtonFor(event)
+        if recent is not None:
+            if not event.isAutoRepeat():
+                self.trigger(recent, lambda s=recent.script: self.runScript(s))
+            return
         codes = widgets.eventKeyCodes(event)
         if any(code in widgets.CLOSE_KEYS for code in codes):
             self.close()
@@ -239,6 +276,13 @@ class HotBox(QWidget):
             self.trigger(button, lambda s=button.script: self.runScript(s))
             return
         super().keyPressEvent(event)
+
+    def recentButtonFor(self, event):
+        """Ctrl+1..9 (Cmd on macOS): the Recent button with that number"""
+        if self.recent_row is None or not event.modifiers() & Qt.ControlModifier:
+            return None
+        number = int(event.key()) - int(Qt.Key_0)
+        return self.recent_row.buttonForNumber(number) if 1 <= number <= 9 else None
 
     # --- search -------------------------------------------------------------------------------------------------
 

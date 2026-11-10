@@ -1,4 +1,4 @@
-#label:Jump to Clipboard Path
+#label:Jump to Path
 #package:qLib
 #textcolor:#c9b8ff
 #hotkey:j

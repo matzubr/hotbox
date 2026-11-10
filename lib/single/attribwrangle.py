@@ -1,8 +1,8 @@
 #label:Create Wrangle
-#group:Attrib
+#group:Create
 #textcolor:#ffa700
 #hotkey:w
-#icon:SOP_attribwrangle
+#icon:wrangle.svg
 
 from hotbox.common import nodes
 

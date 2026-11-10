@@ -1,4 +1,4 @@
-#label:Help to Comment
+#label:Help → Comment
 #package:HelpToComment
 #group:Network
 #textcolor:#ffd59e

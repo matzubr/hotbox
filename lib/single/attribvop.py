@@ -1,8 +1,8 @@
 #label:Create Vop
-#group:Attrib
+#group:Create
 #textcolor:#ffe910
 #hotkey:v
-#icon:SOP_attribvop
+#icon:vop.svg
 
 from hotbox.common import nodes
 

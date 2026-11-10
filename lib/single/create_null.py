@@ -1,6 +1,8 @@
 #label:Create Null
+#group:Create
 #textcolor:#ff8b48
-#icon:SOP_null
+#hotkey:q
+#icon:null.svg
 
 import hou
 

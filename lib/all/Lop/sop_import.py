@@ -3,7 +3,7 @@
 #textcolor:#a8f0c6
 #buttoncolor:#1f1a12
 #hotkey:3
-#icon:LOP_sopimport
+#icon:sop-import.svg
 
 # SOP Import of every node copied to the clipboard (Ctrl+C on SOP nodes or geo objects), prims at /geo/<name>
 from hotbox.common import nodes

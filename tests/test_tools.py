@@ -554,3 +554,70 @@ def test_menu_set_by_label():
     parm.set.assert_called_with("3")
     assert not caches.setMenuByLabel(parm, "Nope")
     assert not caches.setMenuByLabel(None, "Nope")
+
+
+# --- the look of the buttons ---------------------------------------------------------------------------------------
+
+def test_keycap_and_underlined_letter():
+    from hotbox.utils import widgets
+
+    assert widgets.keycapText("g") == "G" and widgets.keycapText("F5") == "F5" and widgets.keycapText(None) == ""
+    assert widgets.underlineIndex("Snap to Grid", "g") == 8  # a word start first
+    assert widgets.underlineIndex("Wedge", "g") == 3  # else anywhere
+    assert widgets.underlineIndex("Bypass", "x") is None
+    assert widgets.underlineIndex("Bypass", "F5") is None
+
+
+def test_script_button_is_one_line_with_a_keycap(houdini, tmp_path):
+    from conftest import write_script
+    from hotbox.utils import widgets
+
+    write_script(tmp_path / "lib", "single/cam/focus.py",
+                 "#label:Camera Bake Keyframes With A Very Long Name\n#textcolor:#ff0000\n#hotkey:f\n#icon:focus.svg\n",
+                 body="# Bakes the camera\n# to keyframes\nimport hou\n")
+    script = scripts.scanLibrary([tmp_path / "lib"], "single")[0]
+    button = widgets.ScriptButton(script)
+    assert len(button.lines) == 1 and button.label == script.label  # no "(f)" in the text
+    assert button.keycapLabel() == "F" and button.tintIcon
+    assert button.accentColor.name() == "#ff0000" and button.textColor.name() == widgets.NEUTRAL_TEXT
+    assert "Bakes the camera to keyframes" in button.toolTip()
+    assert "One selected cam node" in button.toolTip()
+    button.grab()  # paints without errors
+
+
+def test_script_description_from_comment_or_docstring(tmp_path):
+    from conftest import write_script
+
+    lib = tmp_path / "lib"
+    comment = write_script(lib, "all/a.py", "#label:A\n", body="\n# Does a thing\nimport hou\n")
+    docstring = write_script(lib, "all/b.py", "#label:B\n", body='import hou\n\n\ndef main():\n    """Does b"""\n\n\nmain()\n')
+    nothing = write_script(lib, "all/c.py", "#label:C\n", body="import hou\n")
+    assert scripts.scriptDescription(comment) == "Does a thing"
+    assert scripts.scriptDescription(docstring) == "Does b"
+    assert scripts.scriptDescription(nothing) is None
+    library = {s.relpath: s for s in scripts.scanLibrary([lib], "all")}
+    assert scripts.worksOn(library["a.py"]) == "Nothing selected, any network"
+
+
+def test_recent_buttons_run_with_ctrl_number(houdini, tmp_path, monkeypatch):
+    from conftest import write_script
+    from hotbox import main
+    from hotbox.utils import settings, utility
+    from hotbox.utils.qt import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    lib = tmp_path / "lib"
+    write_script(lib, "all/a.py", "#label:A\n#hotkey:1\n")
+    write_script(lib, "all/b.py", "#label:B\n")
+    settings.addRecent("all", "b.py")
+    monkeypatch.setattr(utility, "detectContext", lambda: utility.Context("all", "Sop", "Sop", None))
+    box = main.HotBox(lib_dir=lib)
+    assert box.recent_row.buttons[0].keycapLabel().endswith("1")
+    triggered = []
+    monkeypatch.setattr(box, "trigger", lambda button, action=None: triggered.append(button))
+    box.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_1, Qt.ControlModifier, "1"))
+    assert triggered == [box.recent_row.buttons[0]]  # Ctrl+1: Recent, not the script with hotkey 1
+    box.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_1, Qt.NoModifier, "1"))
+    assert triggered[-1].script.label == "A"
+    assert box.backdropRect().contains(box.central_button.geometry())
+    box.grab()

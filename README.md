@@ -26,6 +26,11 @@ columns share one grid, so rows are on the same level. Single buttons and `#grou
 label (not by file names). A group is a framed block with a caption; it is never split between columns; a group with
 one button is a plain button.
 
+A button is one line: the script color on the stripe and the icon (line icons from `icons/` take the color, Houdini
+icons keep theirs), the label in neutral grey with the hotkey letter underlined, the hotkey in a keycap on the right.
+Hover a button for what the script does (the first comment of its code or the docstring of `main()`) and what it works
+on. The buttons stand on a dark backdrop, so the network behind doesn't mix with them.
+
 Bottom row: open the HotBox folder · current context (click to close) · Script Manager.
 `Esc` or `` ` `` closes the hotbox, so does a click anywhere that is not a button (outside or between buttons). Clicking a button or pressing its hotkey closes the hotbox and runs the script.
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
@@ -33,7 +38,8 @@ Everything a script does is one undo step.
 
 **Tab** starts search: type a part of a label (in any keyboard layout), the other buttons fade out, `Enter` runs the
 first match, `Esc` or `Tab` ends the search.
-**Recent**: a row with the last 4 scripts you ran that fit the current selection/network.
+**Recent**: a row of smaller buttons with the last 4 scripts you ran that fit the current selection/network;
+`Ctrl+1`…`Ctrl+4` (`Cmd` on macOS) run them.
 
 Animations: on opening the buttons grow in from their centers with a small spring, starting at the cursor and
 spreading outwards (farther buttons come a bit later). On hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
@@ -105,7 +111,7 @@ HOTBOX_PATH = "$HOME/houdini_scripts/hotbox_lib;//server/pipeline/hotbox_lib"
 Each folder has the same layout as `lib/` (`all/`, `multiple/`, `single/`), plus `icons/` for your icon files. Folders are searched in order, the
 built-in `lib/` last: a script hides the one with the same path in later folders (your `single/create_null.py`
 replaces the built-in one), and `#ref` targets are looked up the same way. The Script Manager marks scripts from
-these folders with the folder name; "Open HotBox folder" opens the first one. Separator: `;` (`:` works too on
+these folders with the folder name; "Open Folder" opens the first one. Separator: `;` (`:` works too on
 Linux/macOS).
 
 Recent scripts and the package switches are saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json`;
@@ -145,7 +151,7 @@ are in packages: turn them on in the gear menu if you need them.
 | Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
 | Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
 | Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`), Material Library + Assign |
-| any node(s) selected | Create Vop / Wrangle, Create Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
+| any node(s) selected | **Create**: Vop / Wrangle / Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
 | several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
 | cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |
@@ -158,12 +164,12 @@ Tools seen in other Houdini libraries come as packages named after the library (
 
 | Package | Scripts |
 |---|---|
-| `qLib` | Recover Crash, Jump to Clipboard Path, **Viewport**: Templates / Guides / Background / Time Dependency, **Select**: Bypassed / Time-Dependent / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
+| `qLib` | Recover Crash, Jump to Path, **Viewport**: Templates / Guides / Background / Time Dependency, **Select**: Bypassed / Time-Dependent / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
 | `Aelib` | Save Incremental, Open HIP Folder, Lock Camera (cam, hlight) |
-| `LV-Tools` | Make Space Below (one node), Wedge (Wedge -> ROP Geometry Output for picked parameters), Load Wedges (ropgeometry TOP: File SOP per written wedge + Switch), Transfer Transform (two objects), Cache Size (filecache) |
+| `LV-Tools` | Space Below (one node), Wedge (Wedge -> ROP Geometry Output for picked parameters), Load Wedges (ropgeometry TOP: File SOP per written wedge + Switch), Transfer Transform (two objects), Cache Size (filecache) |
 | `BeeHou` | Focus Target (cam: a null that drives the focus distance) |
 | `AutoCacheOut` | Version Up (filecache) |
-| `HelpToComment` | Help to Comment (the help summary as the node comment) |
+| `HelpToComment` | Help → Comment (the help summary as the node comment) |
 
 ### Shared helpers: `common/`
 

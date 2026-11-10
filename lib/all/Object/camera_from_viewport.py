@@ -2,7 +2,7 @@
 #group:View
 #textcolor:#d6f5a3
 #hotkey:c
-#icon:OBJ_camera
+#icon:camera.svg
 
 import hou
 from hotbox.common import panes

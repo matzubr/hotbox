@@ -2,7 +2,7 @@
 #package:LV-Tools
 #textcolor:#ffa0e6
 #hotkey:g
-#icon:TOP_wedge
+#icon:wedge.svg
 
 # A TOP network with a Wedge for the parameters you pick on the selected nodes:
 # from the current value to twice it. Target Parameter and "Overwrite Target Parameter on Work Item Selection" are on:

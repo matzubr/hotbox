@@ -1,7 +1,7 @@
 #label:Last Alembic Track
 #package:blackpoint
 #textcolor:#a0ceff
-#icon:SOP_alembic
+#icon:alembic.svg
 
 import re
 from pathlib import Path

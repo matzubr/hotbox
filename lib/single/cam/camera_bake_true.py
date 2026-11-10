@@ -1,9 +1,9 @@
-#label:Camera Bake Keyframes
+#label:Bake Keyframes
 #group:Bake
 #textcolor:#ffffff
 #buttoncolor:#16182b
 #hotkey:2
-#icon:OBJ_camera
+#icon:camera.svg
 
 import hou
 import toolutils

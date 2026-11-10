@@ -2,7 +2,7 @@
 #group:Materials
 #textcolor:#f5a3d6
 #hotkey:m
-#icon:LOP_materiallibrary
+#icon:material.svg
 
 import hou
 from hotbox.common import panes

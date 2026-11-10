@@ -39,7 +39,18 @@ from .qt import (
     QWidget,
 )
 from .theme import COLORS, PANEL_RADIUS
-from .widgets import ICONS_DIR, AnimationOverlay, Button, HLayout, buttonFont, keyCode, resolveIcon, setIconFolders
+from .widgets import (
+    ICONS_DIR,
+    NEUTRAL_TEXT,
+    AnimationOverlay,
+    Button,
+    HLayout,
+    ScriptButton,
+    buttonFont,
+    keyCode,
+    resolveIcon,
+    setIconFolders,
+)
 
 ACTION_SIZE = (130, 36)
 CODE_WIDTH = 560  # px of the code panel when it is out
@@ -149,6 +160,7 @@ class ScriptManager(RoundedWindow, QWidget):
         self.package_lineedit = self.package_field.lineedit
         self.button_color_swatch = hou.qt.ColorSwatchButton()
         self.text_color_swatch = hou.qt.ColorSwatchButton()
+        self.text_color_swatch.setToolTip("#textcolor: the stripe and line icons of the button (the text is neutral)")
         self.icon_lineedit = QLineEdit()
         self.icon_browse_button = QPushButton()
         self.icon_browse_button.setObjectName("DropDown")
@@ -172,7 +184,7 @@ class ScriptManager(RoundedWindow, QWidget):
         self.warning_label.setObjectName("Warning")
         self.warning_label.setWordWrap(True)
 
-        self.preview = Button("Preview")
+        self.preview = Button("Preview", style="row", size=ScriptButton.SIZE, fontSize=ScriptButton.FONT)
         self.preview.setToolTip("How the button looks in the hotbox")
         self.save_button = Button("Save", buttonColor=COLORS["accent"], textColor="#ffffff", size=ACTION_SIZE,
                                   fontSize=12)
@@ -191,7 +203,7 @@ class ScriptManager(RoundedWindow, QWidget):
             ("Group", self.group_lineedit),
             ("Package", self.package_field),
             ("Button color", self.button_color_swatch),
-            ("Text color", self.text_color_swatch),
+            ("Color", self.text_color_swatch),
             ("Icon", self.icon_field),
             ("Hotkey", self.hotkey_lineedit),
         ]
@@ -417,8 +429,10 @@ class ScriptManager(RoundedWindow, QWidget):
         label = self.name_lineedit.text().strip() or inherited.get("label") or script.path.stem
         hotkey = self.hotkey_lineedit.text().strip()
         self.preview.setButtonIcon(self.icon_lineedit.text().strip() or inherited.get("icon"))
-        self.preview.updateColors(self.button_color_swatch.color().name(), self.text_color_swatch.color().name())
-        self.preview.updateText(f"{label} ({hotkey})" if hotkey else label)
+        self.preview.updateColors(self.button_color_swatch.color().name(), NEUTRAL_TEXT)
+        self.preview.setAccent(self.text_color_swatch.color().name())
+        self.preview.hotkey = hotkey or None
+        self.preview.updateText(label)
 
     def warnings(self) -> list[str]:
         script = self.currentScript()

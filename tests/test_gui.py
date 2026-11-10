@@ -49,8 +49,9 @@ def test_grid_columns_and_groups(houdini, library):
     ]
     vdb, (merge_abs, merge_rel) = grid.columns[0][0][1][0], grid.columns[0][1][1]
     flipbook, save, third = (block[1][0] for block in grid.columns[1])
-    # one grid: rows are on the same level in every column, groups go down, not sideways
-    assert [b.y() for b in (vdb, merge_abs, merge_rel)] == [b.y() for b in (flipbook, save, third)]
+    # every column goes down at its own pace: plain buttons with the small gap, no holes for another column's groups
+    assert vdb.y() == flipbook.y() == 0
+    assert save.y() - flipbook.geometry().bottom() - 1 == third.y() - save.geometry().bottom() - 1 == ScriptGrid.ROW_GAP
     assert merge_abs.x() == merge_rel.x() < flipbook.x()
     # group frame with its caption fits in the gap above the group, below the previous button
     frame = grid.groupFrame([merge_abs, merge_rel])
@@ -379,7 +380,8 @@ def test_script_manager_preview_follows_edits(houdini, library):
     manager = ScriptManager(lib_folder=library)
     manager.name_lineedit.setText("Renamed")
     manager.hotkey_lineedit.setText("k")
-    assert manager.preview.label == "Renamed (k)"
+    assert manager.preview.label == "Renamed"  # the hotkey is in the keycap, not in the text
+    assert manager.preview.keycapLabel() == "K"
     assert manager.preview.baseColor == QColor("#222222")
     manager.close()
 
@@ -420,7 +422,7 @@ def test_preview_does_not_blink_while_typing(houdini, library):
     for text in ("R", "Re", "Ren"):
         manager.name_lineedit.setText(text)
         assert manager.preview.ripple == 1.0 and manager.preview.hover == 0.0
-    assert manager.preview.label == "Ren (f)"  # the flipbook fixture has hotkey f
+    assert manager.preview.label == "Ren" and manager.preview.hotkey == "f"  # the flipbook fixture has hotkey f
     manager.close()
 
 

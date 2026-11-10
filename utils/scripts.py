@@ -96,6 +96,16 @@ class Script:
         return not packages or any(isEnabled(name) for name in packages)
 
     @property
+    def mode(self) -> str | None:
+        """all / multiple / single: the lib/<mode> folder the file is in"""
+        if self.root is None:
+            return None
+        try:
+            return Path(self.path).relative_to(self.root).parts[0]
+        except ValueError:
+            return None
+
+    @property
     def context(self) -> str:
         """Folder inside lib/<mode>: network type (Sop, Lop...) or node type (cam, null...); '' for the root"""
         parent = Path(self.relpath).parent.as_posix()
@@ -455,3 +465,65 @@ LAYOUT_TO_LATIN = dict(zip("йцукенгшщзхъфывапролджэячс
 def latinKey(text: str) -> str | None:
     """Latin character of the same key for a character typed in another layout, None when unknown"""
     return LAYOUT_TO_LATIN.get(text.lower()) if text else None
+
+
+# --- tooltips -------------------------------------------------------------------------------------------------------
+
+DESCRIPTION_LIMIT = 220
+
+
+def _shorten(text: str) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= DESCRIPTION_LIMIT else text[:DESCRIPTION_LIMIT - 1].rstrip() + "…"
+
+
+def scriptDescription(path: Path | None) -> str | None:
+    """What the script does: the comment block at the top of its code, else the docstring of main() / the module"""
+    import ast
+
+    if path is None:
+        return None
+    try:
+        lines = _readText(Path(path)).splitlines()
+    except OSError:
+        return None
+    start = 0
+    while start < len(lines) and (match := _HEADER_LINE.match(lines[start].strip())) and match.group(1) in SETTINGS:
+        start += 1  # the #label:... header
+    body = "\n".join(lines[start:])
+    comment = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped and not comment:
+            continue
+        if not stripped.startswith("#"):
+            break
+        text = stripped.lstrip("#").strip()
+        if text and not text.lower().startswith(("noqa", "type:", "pylint")):
+            comment.append(text)
+    if comment:
+        return _shorten(" ".join(comment))
+    try:
+        tree = ast.parse(body)
+    except SyntaxError:
+        return None
+    functions = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
+    main = next((f for f in functions if f.name == "main"), functions[0] if functions else None)
+    for node in (main, tree):
+        docstring = ast.get_docstring(node) if node is not None else None
+        if docstring:
+            return _shorten(docstring)
+    return None
+
+
+def worksOn(script: Script) -> str:
+    """When the button is shown: the selection and the network / node type"""
+    context = script.context
+    mode = script.mode
+    if mode == "all":
+        return f"Nothing selected, in {context} networks" if context else "Nothing selected, any network"
+    if mode == "multiple":
+        return f"Several selected nodes in {context} networks" if context else "Several selected nodes"
+    if mode == "single":
+        return f"One selected {context} node" if context else "One selected node"
+    return ""

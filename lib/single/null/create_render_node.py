@@ -1,7 +1,7 @@
 #label:Render Node
 #textcolor:#ff8b48
 #hotkey:1
-#icon:OBJ_geo
+#icon:geo.svg
 
 import hou
 from hotbox.common import nodes as node_utils
