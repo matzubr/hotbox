@@ -5,7 +5,7 @@
 #icon:snippets.svg
 
 # mnemo (github.com/matzubr/mnemo): search the code snippets and insert one into this node
-# (VEX for wrangles, Python for Python nodes)
+# (VEX for wrangles, Python for Python nodes, OpenCL for OpenCL SOP / DOP / Copernicus COP)
 from hotbox.common import panes
 
 try:
