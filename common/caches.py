@@ -63,6 +63,22 @@ def _setPath(node, names, labels, value) -> bool:
     return False
 
 
+FRAME_GENERATION = "ROP Node Configuration"  # ROP Fetch: frames from the cache node's own ROP
+
+
+def setMenuByLabel(parm, label: str) -> bool:
+    """Pick the menu entry with the label (the tokens are not the same in every version)"""
+    if parm is None:
+        return False
+    labels = list(parm.menuLabels())
+    if label not in labels:
+        return False
+    index = labels.index(label)
+    items = list(parm.menuItems())
+    parm.set(items[index] if parm.parmTemplate().type().name() == "String" else index)
+    return True
+
+
 def _container(nodes, node_type: str, name: str):
     network = nodes[0].parent()
     container = network.createNode(node_type, name)
@@ -113,6 +129,7 @@ def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
     for cache, rop in pairs:
         fetch = network.createNode("ropfetch", f"write_{cache.name()}")
         _setPath(fetch, ("roppath",), ("ROP Path",), rop.path())
+        setMenuByLabel(fetch.parm("framegeneration"), FRAME_GENERATION)
         if chain:
             wait = network.createNode("waitforall", f"after_{chain[-1].name()}")
             wait.setInput(0, chain[-1])

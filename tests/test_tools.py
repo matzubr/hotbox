@@ -529,7 +529,7 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     assert skipped == []
     assert [n.type_ for n in created] == ["ropfetch", "ropfetch", "waitforall"]
     first, second = fetches
-    first.parm.return_value.set.assert_called_with("/g/sim")
+    first.parm.return_value.set.assert_any_call("/g/sim")
     wait = created[2]
     assert wait.inputs_[0] is first and second.inputs_[0] is wait
     second.setDisplayFlag.assert_called_with(True)
@@ -538,3 +538,19 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     _net, fetches, _ = caches.buildCacheNetwork([mesh, sim], "rop", {"rop_geometry": caches.SELF})
     assert [n.type_ for n in created] == ["fetch", "fetch"]
     assert fetches[1].inputs_[0] is fetches[0]
+
+
+def test_menu_set_by_label():
+    from hotbox.common import caches
+
+    parm = MagicMock()
+    parm.menuLabels.return_value = ("Single Frame", "Frame Range", "ROP Node Configuration")
+    parm.menuItems.return_value = ("0", "1", "3")
+    parm.parmTemplate.return_value.type.return_value.name.return_value = "Menu"
+    assert caches.setMenuByLabel(parm, caches.FRAME_GENERATION)
+    parm.set.assert_called_once_with(2)
+    parm.parmTemplate.return_value.type.return_value.name.return_value = "String"
+    assert caches.setMenuByLabel(parm, caches.FRAME_GENERATION)
+    parm.set.assert_called_with("3")
+    assert not caches.setMenuByLabel(parm, "Nope")
+    assert not caches.setMenuByLabel(None, "Nope")
