@@ -5,25 +5,31 @@
 #icon:network-box.svg
 
 import hou
+from hotbox.common import layout
+from hotbox.utils import settings
+
+SCRIPT = "network_box"
+DEFAULT_PADDING = 15  # screen pixels around the nodes at the current zoom
 
 
 def main():
-    """Network box around the selected nodes, named, in the color of the first node"""
+    """Network box around the selected nodes: name, padding (remembered) and color (default: the first node's)"""
     nodes = hou.selectedNodes()
     if not nodes:
         return
-    button, name = hou.ui.readInput("Network box name", buttons=("OK", "Cancel"), default_choice=0, close_choice=1,
-                                    initial_contents=nodes[0].name())
-    if button != 0:
+    padding = settings.scriptSetting(SCRIPT, "padding", DEFAULT_PADDING)
+    button, (name, padding_text) = hou.ui.readMultiInput(
+        "Network box", ("Name", "Padding, px"), buttons=("OK", "Color...", "Cancel"), default_choice=0,
+        close_choice=2, initial_contents=(nodes[0].name(), str(padding)))
+    if button == 2:
         return
-    parent = nodes[0].parent()
-    box = parent.createNetworkBox()
-    box.setComment(name.strip())
-    for node in nodes:
-        if node.parent() == parent:
-            box.addItem(node)
-    box.fitAroundContents()
-    box.setColor(nodes[0].color())
+    try:
+        padding = max(0.0, float(padding_text.replace(",", ".")))
+    except ValueError:
+        padding = DEFAULT_PADDING
+    settings.setScriptSetting(SCRIPT, "padding", int(padding) if padding == int(padding) else padding)
+    color = hou.ui.selectColor(nodes[0].color()) if button == 1 else None  # None: the first node's
+    layout.networkBox(nodes, name, padding, color)
 
 
 main()

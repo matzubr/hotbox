@@ -5,6 +5,8 @@ import math
 
 import hou
 
+from . import panes
+
 DEFAULT_GRID = (2.0, 1.0)  # Houdini's Network Editor grid: gridxstep / gridystep prefs
 GAP = 0.05  # snapped items keep at least this much space between them
 SEARCH_RADIUS = 12  # grid cells around the nearest one tried before giving up
@@ -111,3 +113,41 @@ def makeSpace(node, pane=None) -> None:
     for item in networkItems(node.parent()):
         if item.position()[1] < node.position()[1] - 1e-6:
             item.setPosition(item.position() - hou.Vector2(0, shift))
+
+
+# --- network boxes ------------------------------------------------------------------------------------------------
+
+PIXELS_PER_UNIT = 100.0  # without a Network Editor
+
+
+def pixelsToUnits(pixels: float, pane=None) -> float:
+    """Screen pixels of the Network Editor at its current zoom in network units"""
+    pane = pane or panes.networkPane()
+    scale = PIXELS_PER_UNIT
+    if pane is not None:
+        try:
+            visible, screen = pane.visibleBounds(), pane.screenBounds()
+            if visible.size()[0] > 0:
+                scale = screen.size()[0] / visible.size()[0]
+        except (AttributeError, hou.OperationFailed):
+            pass
+    return pixels / scale
+
+
+def networkBox(nodes, name: str, padding_px: float = 15, color=None, pane=None):
+    """Network box around the nodes (those in the first node's network) with padding_px screen pixels around
+    them at the current zoom; color: hou.Color, default the first node's"""
+    parent = nodes[0].parent()
+    box = parent.createNetworkBox()
+    box.setComment(name.strip())
+    for node in nodes:
+        if node.parent() == parent:
+            box.addItem(node)
+    box.fitAroundContents()
+    pad = pixelsToUnits(padding_px, pane)
+    if pad:
+        bounds = box.bounds()
+        low, high = bounds.min(), bounds.max()
+        box.setBounds(hou.BoundingRect(low[0] - pad, low[1] - pad, high[0] + pad, high[1] + pad))
+    box.setColor(color if color is not None else nodes[0].color())
+    return box

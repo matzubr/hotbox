@@ -311,3 +311,45 @@ def test_sop_import_names_prims_after_the_source(hou, monkeypatch):
     network.createNode.assert_called_once_with("sopimport", "IMPORT_OUT_rock")
     created.parm("pathprefix").set.assert_any_call("/geo/OUT_rock")
     created.setUserData.assert_called_once_with("nodeshape", "chevron_up")
+
+
+def _boxScene(hou, monkeypatch, answer):
+    from conftest import ROOT
+    from hotbox.common import panes
+
+    pane = MagicMock()
+    pane.visibleBounds().size.return_value = (10.0, 5.0)
+    pane.screenBounds().size.return_value = (1000.0, 500.0)  # 100 px per unit
+    monkeypatch.setattr(panes, "networkPane", lambda: pane)
+    monkeypatch.setattr(hou, "BoundingRect", lambda *rect: rect, raising=False)
+    node = MagicMock()
+    node.name.return_value = "OUT"
+    node.parent.return_value = parent = MagicMock()
+    box = parent.createNetworkBox.return_value
+    box.bounds().min.return_value = (0.0, 0.0)
+    box.bounds().max.return_value = (4.0, 2.0)
+    monkeypatch.setattr(hou, "selectedNodes", lambda: [node], raising=False)
+    hou.ui.readMultiInput.return_value = answer
+    return ROOT / "lib" / "single" / "network_box.py", node, box
+
+
+def test_network_box_padding_in_pixels_remembered(hou, monkeypatch):
+    from hotbox.utils import runner, settings
+
+    script, node, box = _boxScene(hou, monkeypatch, (0, ("FX", "20")))
+    assert runner.runScript(script)
+    box.setComment.assert_called_once_with("FX")
+    box.setBounds.assert_called_once_with((-0.2, -0.2, 4.2, 2.2))
+    box.setColor.assert_called_once_with(node.color())
+    assert settings.scriptSetting("network_box", "padding") == 20
+    hou.ui.selectColor.assert_not_called()
+
+
+def test_network_box_default_padding_and_picked_color(hou, monkeypatch):
+    from hotbox.utils import runner
+
+    script, node, box = _boxScene(hou, monkeypatch, (1, ("FX", "15")))
+    assert runner.runScript(script)
+    assert hou.ui.readMultiInput.call_args.kwargs["initial_contents"] == ("OUT", "15")
+    hou.ui.selectColor.assert_called_once_with(node.color())
+    box.setColor.assert_called_once_with(hou.ui.selectColor.return_value)

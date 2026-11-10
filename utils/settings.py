@@ -71,3 +71,14 @@ def setPackageEnabled(name: str, enabled: bool) -> None:
     data = load()
     data.setdefault("packages", {})[name] = bool(enabled)
     save(data)
+
+
+def scriptSetting(script: str, key: str, default=None):
+    """A value a script remembers between runs (settings.json 'scripts': {script: {key: value}})"""
+    return load().get("scripts", {}).get(script, {}).get(key, default)
+
+
+def setScriptSetting(script: str, key: str, value) -> None:
+    data = load()
+    data.setdefault("scripts", {}).setdefault(script, {})[key] = value
+    save(data)
