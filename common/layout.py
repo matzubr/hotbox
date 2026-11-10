@@ -143,16 +143,22 @@ def networkBox(nodes, name: str, padding_px: float = 15, color=None, pane=None):
     The box is sized from the nodes, not by fitAroundContents (its own margins are uneven: big on top, small below)"""
     parent = nodes[0].parent()
     nodes = [node for node in nodes if node.parent() == parent]
-    box = parent.createNetworkBox()
-    box.setComment(name.strip())
-    for node in nodes:
-        box.addItem(node)
     rects = [itemRect(node) for node in nodes]
     left, bottom = min(r[0] for r in rects), min(r[1] for r in rects)
     right, top = max(r[0] + r[2] for r in rects), max(r[1] + r[3] for r in rects)
     pad, header = pixelsToUnits(padding_px, pane), pixelsToUnits(BOX_HEADER_PX, pane)
-    # position(): the bottom left corner; size() includes the title bar
-    box.setPosition(hou.Vector2(left - pad, bottom - pad))
+
+    box = parent.createNetworkBox()
+    box.setComment(name.strip())
+    if hasattr(box, "setAutoFit"):
+        box.setAutoFit(False)  # adding or moving nodes must not resize it
+    for node in nodes:
+        box.addItem(node)
+    # Moving a box moves what is in it, and setSize keeps the top left corner: size first, then the bottom left
+    # corner, then the nodes go back where they were
     box.setSize(hou.Vector2(right - left + 2 * pad, top - bottom + 2 * pad + header))
+    box.setPosition(hou.Vector2(left - pad, bottom - pad))
+    for node, rect in zip(nodes, rects):
+        node.setPosition(hou.Vector2(rect[0], rect[1]))
     box.setColor(color if color is not None else nodes[0].color())
     return box

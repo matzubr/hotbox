@@ -342,6 +342,8 @@ def test_network_box_padding_in_pixels_remembered(hou, monkeypatch):
     assert runner.runScript(script)
     box.setComment.assert_called_once_with("FX")
     box.setPosition.assert_called_once_with((-0.2, -0.2))
+    box.setAutoFit.assert_called_once_with(False)
+    node.setPosition.assert_called_once_with((0.0, 0.0))  # back where it was after the box moved
     assert box.setSize.call_args.args[0] == pytest.approx((4.4, 2.0 + 0.4 + 0.22))  # + the 22 px title bar
     box.setColor.assert_called_once_with(node.color())
     assert settings.scriptSetting("network_box", "padding") == 20
