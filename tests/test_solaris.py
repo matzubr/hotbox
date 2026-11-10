@@ -33,7 +33,7 @@ def test_geometry_and_instance_velocity_blur_set_or_create():
     from hotbox.common import solaris
 
     blur = ["No Velocity Blur", "Velocity Blur", "Acceleration Blur"], ["off", "on", "accel"]
-    controls = ["Set or Create", "Set if Exists", "Do Nothing"], ["set", "setexisting", "none"]
+    controls = [], []  # no parm menu: the circle button
     geo = _menuParm("xn__primvarskarmaobjectvblur_7fbfg", *blur)
     geo_control = _menuParm("xn__primvarskarmaobjectvblur_control_8sbfg", *controls)
     instance = _menuParm("xn__primvarskarmaobjectinstance_vblur_7bfg", *blur)

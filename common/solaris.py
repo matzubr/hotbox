@@ -51,7 +51,7 @@ def parmTupleByLabel(node, label: str):
 # Karma Velocity Blur / Instance Velocity Blur: primvars:karma:object:vblur / :instance_vblur
 # (parm names xn__primvarskarmaobjectvblur_7fbfg, xn__primvarskarmaobjectinstance_vblur_control_w7bfg...)
 BLUR_PROPERTIES = ("vblur", "instance_vblur")
-SET_OR_CREATE = "Set or Create"
+SET_OR_CREATE = "set"  # control token of "Set or Create" (others: setexisting, block, none)
 
 
 def _blurParms(node, key: str):
@@ -85,7 +85,8 @@ def setVelocityBlur(node) -> list[str]:
             missing.append(key)
             continue
         if control is not None:
-            _pickMenu(control, SET_OR_CREATE, lambda text: text.startswith("set"))
+            # The control is a plain string parm (its menu is the circle button, not a parm menu): the token
+            control.set(SET_OR_CREATE)
         if not _pickMenu(value, VELOCITY_BLUR, lambda text: "velocity" in text and "no" not in text.split()):
             missing.append(key)
     return missing
