@@ -157,7 +157,7 @@ are in packages: turn them on in the gear menu if you need them.
 | everywhere, nothing selected | Flipbook, **Scene**: Missing Files (pick to jump to the nodes), Reload Caches |
 | Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
 | Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
-| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`, followed by Render Geometry Settings: Karma geometry + instance velocity blur, Set or Create), Material Library + Assign |
+| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`, followed by Render Geometry Settings: Karma geometry + instance velocity blur, Set or Create), Material Library + Assign, **Solaris**: Prim Paths (opens [DionysUSD](https://github.com/matzubr/DionysUSD) on the network, when it is installed) |
 | any node(s) selected | **Create**: Vop / Wrangle / Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
 | several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
