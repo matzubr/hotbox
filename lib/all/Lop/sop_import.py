@@ -5,8 +5,12 @@
 #hotkey:3
 #icon:sop-import.svg
 
-# SOP Import of every node copied to the clipboard (Ctrl+C on SOP nodes or geo objects), prims at /geo/<name>
-from hotbox.common import nodes
+# SOP Import of every node copied to the clipboard (Ctrl+C on SOP nodes or geo objects), prims at /geo/<name>,
+# each followed by Render Geometry Settings with Karma velocity blur on those prims
+from hotbox.common import nodes, solaris
 
-nodes.pasteMergeNodes("Lop", "sopimport", "soppath", relative=False, extra_parms={"pathprefix": lambda s: f"/geo/{s.name()}"},
-                      shape="chevron_up", copy_color=True, prefix="IMPORT_")
+created = nodes.pasteMergeNodes("Lop", "sopimport", "soppath", relative=False,
+                                extra_parms={"pathprefix": lambda s: f"/geo/{s.name()}"},
+                                shape="chevron_up", copy_color=True, prefix="IMPORT_")
+for sop_import in created:
+    solaris.addRenderGeometrySettings(sop_import)

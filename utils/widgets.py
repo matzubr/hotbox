@@ -239,10 +239,10 @@ class Button(QPushButton):
     HOVER_SCALE, PRESS_SCALE = 1.07, 1.19
     HOVER_WHITE = 0.10  # background towards white on hover
     RIPPLE_ALPHA = 0.35
-    HOVER_MS, RIPPLE_MS, PRESS_MS = 150, 450, 220
-    APPEAR_MS = 340
-    APPEAR_OVERSHOOT = 1.6  # spring: how far past full size the button grows before settling
-    DISAPPEAR_MS = 200
+    HOVER_MS, RIPPLE_MS, PRESS_MS = 120, 450, 140
+    APPEAR_MS = 220
+    APPEAR_OVERSHOOT = 1.3  # spring: how far past full size the button grows before settling
+    DISAPPEAR_MS = 120
     DISAPPEAR_OVERSHOOT = 1.2  # swell before shrinking
     ICON_SIZE = 28
     DIM_OPACITY = 0.22  # buttons that don't match the search

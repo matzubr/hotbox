@@ -157,10 +157,12 @@ are in packages: turn them on in the gear menu if you need them.
 | everywhere, nothing selected | Flipbook, **Scene**: Missing Files (pick to jump to the nodes), Reload Caches |
 | Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
 | Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
-| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`), Material Library + Assign |
+| Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/geo/<name>`, followed by Render Geometry Settings with Karma velocity blur on them), Material Library + Assign |
 | any node(s) selected | **Create**: Vop / Wrangle / Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box, Color by Type |
 | several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
+| null, several SOPs | **Solaris**: To Solaris (SOP Import in `/obj/lopnet1`, created when missing, prims at `/geo/<name>`, + Render Geometry Settings with velocity blur, its prim pattern tied to the import's path prefix) |
+| filecache, file, rop_geometry with a `.vdb` | **Solaris**: Volume to Solaris (Volume LOP in `/obj/lopnet1`, prim `/vol/<name>`, the sequence as `$F4` with `$HIP`/`$JOB` kept, sampled over the frames on disk or the node's range) |
 | cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |
 | alembic, alembicarchive, filecache, file | Frame Range: scene and playback range from the Alembic animation or the sequence on disk |
 | any node(s) selected | **Network**: Snap to Grid (onto the Network Editor grid, never on top of another node) |
@@ -190,6 +192,7 @@ Small pieces several scripts need, split by topic (whole tools stay scripts in `
 | `common/frames.py` | frame range of a node: Alembic animation, file sequence on disk, keyframes |
 | `common/layout.py` | Network Editor grid step, snapping to it without overlaps, making space |
 | `common/hipfile.py` | incremental hip names, crash files and backups, opening a folder in Finder / Explorer |
+| `common/solaris.py` | SOP Import / Volume LOP in `/obj/lopnet1`, Render Geometry Settings with velocity blur |
 | `common/caches.py` | the ROP of a cache node, TOP / ROP networks writing caches in dependency order |
 | `common/wedge.py`, `common/mplay.py` | Wedge TOP for parameters, image sequences in MPlay |
 

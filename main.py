@@ -51,11 +51,11 @@ class HotBox(QWidget):
     """Keys: hotkeys run their script, Tab starts search (type, Enter runs the first match, Esc/Tab ends it), Esc and ` close."""
 
     # Opening: buttons grow in from their centers, the nearer to the cursor the sooner
-    APPEAR_DELAY_PER_PX = 0.55  # ms of delay per pixel between the cursor and a button center
-    APPEAR_MAX_DELAY = 260  # ms: far buttons don't wait longer than this
+    APPEAR_DELAY_PER_PX = 0.3  # ms of delay per pixel between the cursor and a button center
+    APPEAR_MAX_DELAY = 120  # ms: far buttons don't wait longer than this
     # Closing is the reverse: the farthest buttons shrink first, the ones at the cursor last
-    DISAPPEAR_DELAY_PER_PX = 0.3
-    DISAPPEAR_MAX_DELAY = 140
+    DISAPPEAR_DELAY_PER_PX = 0.15
+    DISAPPEAR_MAX_DELAY = 60
     FADE_OUT = max(widgets.Button.PRESS_MS, DISAPPEAR_MAX_DELAY + widgets.Button.DISAPPEAR_MS)  # whole closing, ms
     SEARCH_KEYS = (int(Qt.Key_Tab), int(Qt.Key_Backtab))
     # Backdrop under the buttons: the network behind doesn't read as part of the menu
