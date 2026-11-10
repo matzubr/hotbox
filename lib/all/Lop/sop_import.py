@@ -6,7 +6,7 @@
 #icon:sop-import.svg
 
 # SOP Import of every node copied to the clipboard (Ctrl+C on SOP nodes or geo objects), prims at /geo/<name>,
-# each followed by Render Geometry Settings with Karma velocity blur on those prims
+# each followed by Render Geometry Settings with Karma geometry + instance velocity blur (Set or Create) on those prims
 from hotbox.common import nodes, solaris
 
 created = nodes.pasteMergeNodes("Lop", "sopimport", "soppath", relative=False,

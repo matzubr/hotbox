@@ -29,19 +29,31 @@ def lopnet(hou, monkeypatch):
     return obj, network
 
 
-def test_velocity_blur_set_by_menu_label():
+def test_geometry_and_instance_velocity_blur_set_or_create():
+    from hotbox.common import solaris
+
+    blur = ["No Velocity Blur", "Velocity Blur", "Acceleration Blur"], ["off", "on", "accel"]
+    controls = ["Set or Create", "Set if Exists", "Do Nothing"], ["set", "setexisting", "none"]
+    geo = _menuParm("xn__primvarskarmaobjectgeovelocityblur_07bg", *blur)
+    geo_control = _menuParm("xn__primvarskarmaobjectgeovelocityblur_control_mlbg", *controls)
+    instance = _menuParm("xn__primvarskarmaobjectinstancevelocityblur_9xbg", *blur)
+    instance_control = _menuParm("xn__primvarskarmaobjectinstancevelocityblur_control_q4bg", *controls)
+    node = MagicMock()
+    node.parms.return_value = [_menuParm("primpattern", [], []), instance_control, geo, instance, geo_control]
+
+    assert solaris.setVelocityBlur(node) == []
+    for value in (geo, instance):
+        value.set.assert_called_once_with("on")
+    for control in (geo_control, instance_control):
+        control.set.assert_called_once_with("set")
+
+
+def test_missing_blur_parms_are_named():
     from hotbox.common import solaris
 
     node = MagicMock()
-    value = _menuParm("xn__primvarskarmaobjectgeovelocityblur_07bg", ["No Velocity Blur", "Velocity Blur",
-                                                                     "Acceleration Blur"], ["off", "on", "accel"])
-    control = _menuParm("xn__primvarskarmaobjectgeovelocityblur_control_mlbg", ["Set or Create", "Do Nothing"],
-                        ["set", "none"])
-    node.parms.return_value = [_menuParm("primpattern", [], []), control, value]
-
-    assert solaris.setVelocityBlur(node)
-    value.set.assert_called_once_with("on")
-    control.set.assert_called_once_with("set")
+    node.parms.return_value = []
+    assert solaris.setVelocityBlur(node) == ["geovelocityblur", "instancevelocityblur"]
 
 
 def test_null_goes_to_a_new_lopnet_with_render_geometry_settings(hou, lopnet, monkeypatch):

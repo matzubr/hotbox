@@ -48,29 +48,45 @@ def parmTupleByLabel(node, label: str):
 
 # --- render geometry settings -------------------------------------------------------------------------------------
 
-def _velocityBlurParms(node):
-    """(value parm, its control parm) of Karma 'Geometry Velocity Blur'; USD property names are encoded (xn__...)"""
-    found = [p for p in node.parms() if "geovelocityblur" in p.name()]
+BLUR_PROPERTIES = ("geovelocityblur", "instancevelocityblur")  # Karma: Geometry / Instance Velocity Blur
+SET_OR_CREATE = "Set or Create"
+
+
+def _blurParms(node, key: str):
+    """(value parm, its control parm) of a Karma blur property; USD property names are encoded (xn__...).
+    'geovelocityblur' must not match 'instancevelocityblur' and the other way: the name has to hold ':<key>'"""
+    found = [p for p in node.parms() if f"object{key}" in p.name()]
     value = next((p for p in found if "control" not in p.name()), None)
     control = next((p for p in found if "control" in p.name()), None)
     return value, control
 
 
-def setVelocityBlur(node) -> bool:
-    """Geometry Velocity Blur on the Render Geometry Settings: Velocity Blur (its control on 'set')"""
-    value, control = _velocityBlurParms(node)
-    if value is None:
-        return False
-    if control is not None and "set" in control.menuItems():
-        control.set("set")
-    if caches.setMenuByLabel(value, VELOCITY_BLUR):
+def _pickMenu(parm, label: str, fallback) -> bool:
+    """Menu entry with the label, else the first entry passing fallback(label lowercased)"""
+    if caches.setMenuByLabel(parm, label):
         return True
-    labels = [label.lower() for label in value.menuLabels()]
-    index = next((i for i, label in enumerate(labels) if "velocity" in label and "no" not in label.split()), None)
+    labels = [text.lower() for text in parm.menuLabels()]
+    index = next((i for i, text in enumerate(labels) if fallback(text)), None)
     if index is None:
         return False
-    value.set(value.menuItems()[index] if value.parmTemplate().type().name() == "String" else index)
+    parm.set(parm.menuItems()[index] if parm.parmTemplate().type().name() == "String" else index)
     return True
+
+
+def setVelocityBlur(node) -> list[str]:
+    """Geometry and Instance Velocity Blur on the Render Geometry Settings: 'Velocity Blur', each control
+    'Set or Create'. The properties not found (empty: all set)"""
+    missing = []
+    for key in BLUR_PROPERTIES:
+        value, control = _blurParms(node, key)
+        if value is None:
+            missing.append(key)
+            continue
+        if control is not None:
+            _pickMenu(control, SET_OR_CREATE, lambda text: text.startswith("set"))
+        if not _pickMenu(value, VELOCITY_BLUR, lambda text: "velocity" in text and "no" not in text.split()):
+            missing.append(key)
+    return missing
 
 
 def addRenderGeometrySettings(sop_import, name: str | None = None):
@@ -83,8 +99,9 @@ def addRenderGeometrySettings(sop_import, name: str | None = None):
     pattern = settings.parm("primpattern") or parmByLabel(settings, "Primitives")
     if pattern is not None:
         pattern.set(f'`chs("{settings.relativePathTo(sop_import)}/pathprefix")`')
-    if not setVelocityBlur(settings):
-        hou.ui.setStatusMessage(f"{settings.name()}: no Geometry Velocity Blur parameter",
+    missing = setVelocityBlur(settings)
+    if missing:
+        hou.ui.setStatusMessage(f"{settings.name()}: not set: {', '.join(missing)}",
                                 severity=hou.severityType.Warning)
     wanted = sop_import.position() - hou.Vector2(0, 1)
     settings.setPosition(freePosition(network, wanted, settings.size(), step=0.5, ignore=[settings]))
