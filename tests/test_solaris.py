@@ -34,18 +34,21 @@ def test_geometry_and_instance_velocity_blur_set_or_create():
 
     blur = ["No Velocity Blur", "Velocity Blur", "Acceleration Blur"], ["off", "on", "accel"]
     controls = ["Set or Create", "Set if Exists", "Do Nothing"], ["set", "setexisting", "none"]
-    geo = _menuParm("xn__primvarskarmaobjectgeovelocityblur_07bg", *blur)
-    geo_control = _menuParm("xn__primvarskarmaobjectgeovelocityblur_control_mlbg", *controls)
-    instance = _menuParm("xn__primvarskarmaobjectinstancevelocityblur_9xbg", *blur)
-    instance_control = _menuParm("xn__primvarskarmaobjectinstancevelocityblur_control_q4bg", *controls)
+    geo = _menuParm("xn__primvarskarmaobjectvblur_7fbfg", *blur)
+    geo_control = _menuParm("xn__primvarskarmaobjectvblur_control_8sbfg", *controls)
+    instance = _menuParm("xn__primvarskarmaobjectinstance_vblur_7bfg", *blur)
+    instance_control = _menuParm("xn__primvarskarmaobjectinstance_vblur_control_w7bfg", *controls)
     node = MagicMock()
-    node.parms.return_value = [_menuParm("primpattern", [], []), instance_control, geo, instance, geo_control]
+    volume_mode = _menuParm("xn__primvarskarmaobjectvolumevblurmode_iwbfg", ["Lattice Deformation"], ["lattice"])
+    node.parms.return_value = [_menuParm("primpattern", [], []), instance_control, geo, volume_mode, instance,
+                               geo_control]
 
     assert solaris.setVelocityBlur(node) == []
     for value in (geo, instance):
         value.set.assert_called_once_with("on")
     for control in (geo_control, instance_control):
         control.set.assert_called_once_with("set")
+    volume_mode.set.assert_not_called()
 
 
 def test_missing_blur_parms_are_named():
@@ -53,7 +56,7 @@ def test_missing_blur_parms_are_named():
 
     node = MagicMock()
     node.parms.return_value = []
-    assert solaris.setVelocityBlur(node) == ["geovelocityblur", "instancevelocityblur"]
+    assert solaris.setVelocityBlur(node) == ["vblur", "instance_vblur"]
 
 
 def test_null_goes_to_a_new_lopnet_with_render_geometry_settings(hou, lopnet, monkeypatch):

@@ -48,14 +48,16 @@ def parmTupleByLabel(node, label: str):
 
 # --- render geometry settings -------------------------------------------------------------------------------------
 
-BLUR_PROPERTIES = ("geovelocityblur", "instancevelocityblur")  # Karma: Geometry / Instance Velocity Blur
+# Karma Velocity Blur / Instance Velocity Blur: primvars:karma:object:vblur / :instance_vblur
+# (parm names xn__primvarskarmaobjectvblur_7fbfg, xn__primvarskarmaobjectinstance_vblur_control_w7bfg...)
+BLUR_PROPERTIES = ("vblur", "instance_vblur")
 SET_OR_CREATE = "Set or Create"
 
 
 def _blurParms(node, key: str):
     """(value parm, its control parm) of a Karma blur property; USD property names are encoded (xn__...).
-    'geovelocityblur' must not match 'instancevelocityblur' and the other way: the name has to hold ':<key>'"""
-    found = [p for p in node.parms() if f"object{key}" in p.name()]
+    'vblur' must not match 'instance_vblur': the name has to hold 'object<key>_'"""
+    found = [p for p in node.parms() if f"object{key}_" in p.name()]
     value = next((p for p in found if "control" not in p.name()), None)
     control = next((p for p in found if "control" in p.name()), None)
     return value, control
