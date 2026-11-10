@@ -9,7 +9,7 @@ from . import caches, frames, panes, paths
 from .nodes import freePosition
 
 LOPNET = "/obj/lopnet1"  # every import goes here: created when missing
-GEO_PREFIX = "/geo"  # SOP Import prims: /geo/<node name>
+PATH_PREFIX = "/$OS"  # SOP Import prims: under /<name of the SOP Import node>
 VOL_PREFIX = "/vol"  # Volume prims: /vol/<node name>
 VELOCITY_BLUR = "Velocity Blur"  # Karma 'Geometry Velocity Blur' menu entry
 COLUMN_GAP = 1.0
@@ -115,7 +115,7 @@ def addRenderGeometrySettings(sop_import, name: str | None = None):
 # --- SOP geometry -------------------------------------------------------------------------------------------------
 
 def importSops(nodes) -> list:
-    """SOP Import + Render Geometry Settings in LOPNET for each SOP node, prims at /geo/<name>.
+    """SOP Import + Render Geometry Settings in LOPNET for each SOP node, prims at /$OS (/IMPORT_<name>).
     The created pairs, side by side in a new column."""
     nodes = [n for n in nodes if n.type().category() == hou.sopNodeTypeCategory()]
     if not nodes:
@@ -128,7 +128,7 @@ def importSops(nodes) -> list:
         name = node.name()
         sop_import = network.createNode("sopimport", f"IMPORT_{name}")
         sop_import.parm("soppath").set(node.path())
-        sop_import.parm("pathprefix").set(f"{GEO_PREFIX}/{name}")
+        sop_import.parm("pathprefix").set(PATH_PREFIX)
         sop_import.setUserData("nodeshape", "chevron_up")
         sop_import.setColor(node.color())
         sop_import.setPosition(start + hou.Vector2(i * 3, 0))

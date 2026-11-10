@@ -85,7 +85,7 @@ def test_null_goes_to_a_new_lopnet_with_render_geometry_settings(hou, lopnet, mo
     network.createNode.assert_any_call("sopimport", "IMPORT_OUT_rock")
     network.createNode.assert_any_call("rendergeometrysettings", "RENDERGEO_OUT_rock")
     import_parms["soppath"].set.assert_called_once_with("/obj/geo1/OUT_rock")
-    import_parms["pathprefix"].set.assert_called_once_with("/geo/OUT_rock")
+    import_parms["pathprefix"].set.assert_called_once_with("/$OS")
     settings.setInput.assert_called_once_with(0, sop_import)
     settings_parms["primpattern"].set.assert_called_once_with('`chs("../IMPORT_OUT_rock/pathprefix")`')
 

@@ -134,21 +134,25 @@ def pixelsToUnits(pixels: float, pane=None) -> float:
     return pixels / scale
 
 
+BOX_HEADER_PX = 22  # the title bar of a network box, screen pixels (it scales with the zoom like the nodes)
+
+
 def networkBox(nodes, name: str, padding_px: float = 15, color=None, pane=None):
-    """Network box around the nodes (those in the first node's network) with padding_px screen pixels around
-    them at the current zoom; color: hou.Color, default the first node's"""
+    """Network box around the nodes (those in the first node's network): padding_px screen pixels at the
+    current zoom on every side of the node shapes, the title bar above. color: hou.Color, default the first node's.
+    The box is sized from the nodes, not by fitAroundContents (its own margins are uneven: big on top, small below)"""
     parent = nodes[0].parent()
+    nodes = [node for node in nodes if node.parent() == parent]
     box = parent.createNetworkBox()
     box.setComment(name.strip())
     for node in nodes:
-        if node.parent() == parent:
-            box.addItem(node)
-    box.fitAroundContents()
-    pad = pixelsToUnits(padding_px, pane)
-    if pad:
-        # hou.NetworkBox has no bounds(): position (bottom left) and size
-        position, size = box.position(), box.size()
-        box.setPosition(hou.Vector2(position[0] - pad, position[1] - pad))
-        box.setSize(hou.Vector2(size[0] + 2 * pad, size[1] + 2 * pad))
+        box.addItem(node)
+    rects = [itemRect(node) for node in nodes]
+    left, bottom = min(r[0] for r in rects), min(r[1] for r in rects)
+    right, top = max(r[0] + r[2] for r in rects), max(r[1] + r[3] for r in rects)
+    pad, header = pixelsToUnits(padding_px, pane), pixelsToUnits(BOX_HEADER_PX, pane)
+    # position(): the bottom left corner; size() includes the title bar
+    box.setPosition(hou.Vector2(left - pad, bottom - pad))
+    box.setSize(hou.Vector2(right - left + 2 * pad, top - bottom + 2 * pad + header))
     box.setColor(color if color is not None else nodes[0].color())
     return box

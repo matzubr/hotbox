@@ -4,7 +4,7 @@
 #hotkey:l
 #icon:sop-import.svg
 
-# SOP Import of the null in /obj/lopnet1 (prims at /geo/<name>) and Render Geometry Settings after it
+# SOP Import of the null in /obj/lopnet1 (prims at /$OS: /IMPORT_<name>) and Render Geometry Settings after it
 # with Karma geometry + instance velocity blur (Set or Create) on those prims
 import hou
 from hotbox.common import solaris

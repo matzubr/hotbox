@@ -289,7 +289,7 @@ def test_missing_files_skip_outputs_existing_files_and_sequences(hou, monkeypatc
     assert "/obj/asset/inner" not in [p.node().path() for p in paths.sceneFileParms()]  # locked HDA not entered
 
 
-def test_sop_import_names_prims_after_the_source(hou, monkeypatch):
+def test_sop_import_prims_under_the_import_node_name(hou, monkeypatch):
     from conftest import ROOT
     from hotbox.common import panes
     from hotbox.utils import runner
@@ -309,7 +309,7 @@ def test_sop_import_names_prims_after_the_source(hou, monkeypatch):
     assert runner.runScript(ROOT / "lib" / "all" / "Lop" / "sop_import.py")
 
     network.createNode.assert_called_once_with("sopimport", "IMPORT_OUT_rock")
-    created.parm("pathprefix").set.assert_any_call("/geo/OUT_rock")
+    created.parm("pathprefix").set.assert_any_call("/$OS")
     created.setUserData.assert_called_once_with("nodeshape", "chevron_up")
 
 
@@ -322,13 +322,15 @@ def _boxScene(hou, monkeypatch, answer):
     pane.screenBounds().size.return_value = (1000.0, 500.0)  # 100 px per unit
     monkeypatch.setattr(panes, "networkPane", lambda: pane)
     monkeypatch.setattr(hou, "Vector2", lambda x, y: (x, y), raising=False)
-    node = MagicMock()
+    parent = MagicMock()
+    node, other = MagicMock(), MagicMock()
     node.name.return_value = "OUT"
-    node.parent.return_value = parent = MagicMock()
+    for item, position in ((node, (0.0, 0.0)), (other, (3.0, 1.7))):
+        item.parent.return_value = parent
+        item.position.return_value = position
+        item.size.return_value = (1.0, 0.3)
     box = parent.createNetworkBox.return_value
-    box.position.return_value = (0.0, 0.0)
-    box.size.return_value = (4.0, 2.0)
-    monkeypatch.setattr(hou, "selectedNodes", lambda: [node], raising=False)
+    monkeypatch.setattr(hou, "selectedNodes", lambda: [node, other], raising=False)
     hou.ui.readMultiInput.return_value = answer
     return ROOT / "lib" / "single" / "network_box.py", node, box
 
@@ -340,7 +342,7 @@ def test_network_box_padding_in_pixels_remembered(hou, monkeypatch):
     assert runner.runScript(script)
     box.setComment.assert_called_once_with("FX")
     box.setPosition.assert_called_once_with((-0.2, -0.2))
-    assert box.setSize.call_args.args[0] == pytest.approx((4.4, 2.4))
+    assert box.setSize.call_args.args[0] == pytest.approx((4.4, 2.0 + 0.4 + 0.22))  # + the 22 px title bar
     box.setColor.assert_called_once_with(node.color())
     assert settings.scriptSetting("network_box", "padding") == 20
     hou.ui.selectColor.assert_not_called()
