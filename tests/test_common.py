@@ -321,13 +321,13 @@ def _boxScene(hou, monkeypatch, answer):
     pane.visibleBounds().size.return_value = (10.0, 5.0)
     pane.screenBounds().size.return_value = (1000.0, 500.0)  # 100 px per unit
     monkeypatch.setattr(panes, "networkPane", lambda: pane)
-    monkeypatch.setattr(hou, "BoundingRect", lambda *rect: rect, raising=False)
+    monkeypatch.setattr(hou, "Vector2", lambda x, y: (x, y), raising=False)
     node = MagicMock()
     node.name.return_value = "OUT"
     node.parent.return_value = parent = MagicMock()
     box = parent.createNetworkBox.return_value
-    box.bounds().min.return_value = (0.0, 0.0)
-    box.bounds().max.return_value = (4.0, 2.0)
+    box.position.return_value = (0.0, 0.0)
+    box.size.return_value = (4.0, 2.0)
     monkeypatch.setattr(hou, "selectedNodes", lambda: [node], raising=False)
     hou.ui.readMultiInput.return_value = answer
     return ROOT / "lib" / "single" / "network_box.py", node, box
@@ -339,7 +339,8 @@ def test_network_box_padding_in_pixels_remembered(hou, monkeypatch):
     script, node, box = _boxScene(hou, monkeypatch, (0, ("FX", "20")))
     assert runner.runScript(script)
     box.setComment.assert_called_once_with("FX")
-    box.setBounds.assert_called_once_with((-0.2, -0.2, 4.2, 2.2))
+    box.setPosition.assert_called_once_with((-0.2, -0.2))
+    assert box.setSize.call_args.args[0] == pytest.approx((4.4, 2.4))
     box.setColor.assert_called_once_with(node.color())
     assert settings.scriptSetting("network_box", "padding") == 20
     hou.ui.selectColor.assert_not_called()

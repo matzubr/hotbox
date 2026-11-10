@@ -146,8 +146,9 @@ def networkBox(nodes, name: str, padding_px: float = 15, color=None, pane=None):
     box.fitAroundContents()
     pad = pixelsToUnits(padding_px, pane)
     if pad:
-        bounds = box.bounds()
-        low, high = bounds.min(), bounds.max()
-        box.setBounds(hou.BoundingRect(low[0] - pad, low[1] - pad, high[0] + pad, high[1] + pad))
+        # hou.NetworkBox has no bounds(): position (bottom left) and size
+        position, size = box.position(), box.size()
+        box.setPosition(hou.Vector2(position[0] - pad, position[1] - pad))
+        box.setSize(hou.Vector2(size[0] + 2 * pad, size[1] + 2 * pad))
     box.setColor(color if color is not None else nodes[0].color())
     return box
