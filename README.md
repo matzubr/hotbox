@@ -151,6 +151,7 @@ are in packages: turn them on in the gear menu if you need them.
 | cam / hlight | Look Through (again: back to perspective), Camera Bake, Frame Range |
 | alembic, alembicarchive, filecache, file | Frame Range: scene and playback range from the Alembic animation or the sequence on disk |
 | any node(s) selected | **Network**: Snap to Grid (onto the Network Editor grid, never on top of another node) |
+| cache nodes (filecache, rop_geometry...) | Cache Network: a TOP (ROP Fetch + Wait for All) or ROP (Fetch) network writing them upstream first; more cache types in `CACHE_TYPES` of `lib/multiple/cache_network.py` |
 
 Tools seen in other Houdini libraries come as packages named after the library (all off by default,
 [AwesomeHoudini](https://github.com/wyhinton/AwesomeHoudini) lists them). The code here is HotBox's own:
@@ -176,6 +177,7 @@ Small pieces several scripts need, split by topic (whole tools stay scripts in `
 | `common/frames.py` | frame range of a node: Alembic animation, file sequence on disk, keyframes |
 | `common/layout.py` | Network Editor grid step, snapping to it without overlaps, making space |
 | `common/hipfile.py` | incremental hip names, crash files and backups, opening a folder in Finder / Explorer |
+| `common/caches.py` | the ROP of a cache node, TOP / ROP networks writing caches in dependency order |
 | `common/wedge.py`, `common/mplay.py` | Wedge TOP for parameters, image sequences in MPlay |
 
 ```python

@@ -464,3 +464,77 @@ def test_load_wedges_makes_file_nodes_and_a_switch(hou, vec, monkeypatch):
     switch = created[-1]
     assert switch.type_ == "switch"
     switch.setInput.assert_any_call(1, files[1])
+
+
+def _cache(path, type_name, inputs=(), namespace=""):
+    node = _item(path, 0, 0)
+    node.type.return_value.nameComponents.return_value = ("", namespace, type_name, "2.0")
+    node.inputAncestors.return_value = list(inputs)
+    return node
+
+
+def test_cache_rop_is_found_by_the_type_list(hou, monkeypatch):
+    class Rop(MagicMock):
+        pass
+
+    monkeypatch.setattr(hou, "RopNode", Rop, raising=False)
+    from hotbox.common import caches
+
+    render = Rop()
+    render.name.return_value = "render"
+    cache = _cache("/obj/geo1/filecache1", "filecache")
+    cache.allSubChildren.return_value = [MagicMock(), render]
+    types = {"filecache": caches.AUTO, "studio::cache": "write", "rop_geometry": caches.SELF}
+    assert caches.ropOf(cache, types) is render
+    studio = _cache("/obj/geo1/c", "cache", namespace="studio")
+    assert caches.ropOf(studio, types) is studio.node.return_value
+    studio.node.assert_called_with("write")
+    rop = _cache("/obj/geo1/rop_geometry1", "rop_geometry")
+    assert caches.ropOf(rop, types) is rop
+    assert caches.ropOf(_cache("/obj/geo1/box", "box"), types) is None
+
+
+def test_caches_in_dependency_order():
+    from hotbox.common import caches
+
+    sim = _cache("/g/sim", "filecache")
+    mesh = _cache("/g/mesh", "filecache", inputs=[sim])
+    other = _cache("/g/other", "filecache")
+    assert caches.dependencyOrder([mesh, other, sim]) == [other, sim, mesh]
+
+
+def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkeypatch):
+    from hotbox.common import caches
+
+    sim = _cache("/g/sim", "rop_geometry")
+    mesh = _cache("/g/mesh", "rop_geometry", inputs=[sim])
+    network = MagicMock()
+    network.children.return_value = []
+    for node in (sim, mesh):
+        node.parent.return_value = network
+    container = _item("/g/write_caches", 0, 0)
+    network.createNode.return_value = container
+    created = []
+
+    def createNode(node_type, name):
+        node = _item(f"/g/write_caches/{name}", 0, 0)
+        node.type_ = node_type
+        node.inputs_ = {}
+        node.setInput.side_effect = lambda i, src: node.inputs_.__setitem__(i, src)
+        created.append(node)
+        return node
+
+    container.createNode.side_effect = createNode
+    _net, fetches, skipped = caches.buildCacheNetwork([mesh, sim], "top", {"rop_geometry": caches.SELF})
+    assert skipped == []
+    assert [n.type_ for n in created] == ["ropfetch", "ropfetch", "waitforall"]
+    first, second = fetches
+    first.parm.return_value.set.assert_called_with("/g/sim")
+    wait = created[2]
+    assert wait.inputs_[0] is first and second.inputs_[0] is wait
+    second.setDisplayFlag.assert_called_with(True)
+
+    created.clear()
+    _net, fetches, _ = caches.buildCacheNetwork([mesh, sim], "rop", {"rop_geometry": caches.SELF})
+    assert [n.type_ for n in created] == ["fetch", "fetch"]
+    assert fetches[1].inputs_[0] is fetches[0]

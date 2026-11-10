@@ -182,11 +182,6 @@ def buildChain(topnet, wedge, node) -> list[str]:
     else:
         problems.append(f"Output File = {OUTPUT_FILE.format(name=written.name())}")
     return problems
-    merge = network.createNode("object_merge", f"IMPORT_{written.name()}")
-    merge.parm("objpath1").set(written.path())
-    merge.setDisplayFlag(True)
-    merge.setRenderFlag(True)
-    return problems
 
 
 # --- loading the written wedges -----------------------------------------------------------------------------------
