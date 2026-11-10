@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import re
-import sys
 from pathlib import Path
 
 import hou
@@ -47,7 +46,6 @@ FONT_SIZE = 14  # points
 CLOSE_KEYS = (int(Qt.Key_Escape), int(Qt.Key_QuoteLeft))  # Esc and `
 WHITE = QColor("#ffffff")
 NEUTRAL_TEXT = "#e8e8e8"  # script buttons: text is neutral, the script color goes to the icon and the side stripe
-RECENT_MODIFIER = "⌘" if sys.platform == "darwin" else "Ctrl+"  # Recent buttons run with Ctrl+1..4 (Cmd on macOS)
 
 _font_loaded = False
 
@@ -70,11 +68,12 @@ def buttonFont(size: float = FONT_SIZE) -> QFont:
     return font
 
 
-def fitText(text: str, width: int, max_lines: int = 2, size: float = FONT_SIZE) -> tuple[list[str], QFont]:
+def fitText(text: str, width: int, max_lines: int = 2, size: float = FONT_SIZE,
+            shrink: bool = True) -> tuple[list[str], QFont]:
     """Word wrap measured in pixels. When the text takes more than max_lines or a word is wider than the
-    button (long node type names: 'karmarendersettings') the font gets smaller; if it still doesn't fit,
+    button (long node type names: 'karmarendersettings') the font gets smaller (shrink); if it still doesn't fit,
     the lines are cut with '…' (the button tooltip has the full text)."""
-    for font_size in (size, size - 2, size - 3, size - 4):
+    for font_size in (size, size - 2, size - 3, size - 4) if shrink else (size,):
         font = buttonFont(font_size)
         metrics = QFontMetrics(font)
         lines: list[str] = []
@@ -247,6 +246,7 @@ class Button(QPushButton):
     DISAPPEAR_OVERSHOOT = 1.2  # swell before shrinking
     ICON_SIZE = 28
     DIM_OPACITY = 0.22  # buttons that don't match the search
+    DISABLED_OPACITY = 0.4  # Save with nothing to save
     # "row" style (script buttons): stripe | icon | text on one line, left aligned | keycap
     ROW_PAD = 12
     ROW_ICON = 22
@@ -267,6 +267,8 @@ class Button(QPushButton):
         self.hotkey = hotkey
         self.keycap = keycap
         self.accentColor = QColor(accent) if accent else None
+        self.stripeColor: QColor | None = None  # the group color; None: the accent
+        self.showStripe = True
         self.tintIcon = False
         self.hover = 0.0
         self.ripple = 1.0  # 1: finished
@@ -352,7 +354,9 @@ class Button(QPushButton):
         self.label = text
         self.setText(text)
         if self.style == "row":
-            self.lines, self.labelFont = fitText(text, int(self.rowTextWidth()), max_lines=1, size=self.fontSize)
+            # one font size for every script button: a long label is cut with '…', never made smaller
+            self.lines, self.labelFont = fitText(text, int(self.rowTextWidth()), max_lines=1, size=self.fontSize,
+                                                 shrink=False)
         else:
             icon_width = self.ICON_SIZE + 6 if not self.icon().isNull() else 0
             self.lines, self.labelFont = fitText(text, self.buttonWidth - 24 - icon_width, size=self.fontSize)
@@ -367,6 +371,11 @@ class Button(QPushButton):
 
     def setAccent(self, color: str | None):
         self.accentColor = QColor(color) if color else None
+        self.update()
+
+    def setStripe(self, color: str | QColor | None):
+        """Color of the side stripe when it is not the accent (buttons of a group: the group color)"""
+        self.stripeColor = QColor(color) if color else None
         self.update()
 
     def keycapLabel(self) -> str:
@@ -427,7 +436,8 @@ class Button(QPushButton):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
-        painter.setOpacity((1.0 - self.press) * (self.DIM_OPACITY if self.dimmed else 1.0))
+        opacity = (1.0 - self.press) * (self.DIM_OPACITY if self.dimmed else 1.0)
+        painter.setOpacity(opacity * (1.0 if self.isEnabled() else self.DISABLED_OPACITY))
         center = rect.center()
         painter.translate(center)
         painter.scale(self.scale(), self.scale())
@@ -471,10 +481,11 @@ class Button(QPushButton):
     def paintRow(self, painter: QPainter, rect: QRectF, path: QPainterPath):
         """stripe | icon | text (hotkey letter underlined) | keycap"""
         center_y = rect.center().y()
-        if self.accentColor is not None:
+        stripe = (self.stripeColor or self.accentColor) if self.showStripe else None
+        if stripe is not None:
             painter.save()
             painter.setClipPath(path)
-            painter.fillRect(QRectF(rect.left(), rect.top(), self.STRIPE, rect.height()), self.accentColor)
+            painter.fillRect(QRectF(rect.left(), rect.top(), self.STRIPE, rect.height()), stripe)
             painter.restore()
         x = rect.left() + self.STRIPE + self.ROW_PAD
         icon = self.icon()
@@ -651,6 +662,8 @@ class ScriptGrid(QWidget):
                     blocks.append((name, buttons))
                     if name:
                         self.groups.append((name, buttons))
+                        for button in buttons:  # the stripe says the group, the icon says the script
+                            button.setStripe(groupColor(block_scripts))
                 self.columns.append(blocks)
 
         layout = QHBoxLayout(self)
@@ -748,8 +761,13 @@ class ScriptGrid(QWidget):
         return bindings
 
 
+def groupColor(scripts) -> str:
+    """Stripe color of a group: the color of its first script"""
+    return scripts[0].textcolor
+
+
 def paintGroupFrame(painter: QPainter, frame: QRectF, name: str, buttons=()) -> None:
-    """Translucent rounded frame with a caption: #group blocks and the Recent row.
+    """Translucent rounded frame with a caption: #group blocks.
     While its buttons appear, the frame fades in with the first of them."""
     shown = max((min(1.0, max(0.0, b.appear)) * (1.0 - b.press) for b in buttons), default=1.0)
     if shown <= 0:
@@ -766,35 +784,17 @@ def paintGroupFrame(painter: QPainter, frame: QRectF, name: str, buttons=()) -> 
     painter.restore()
 
 
-class RecentRow(QWidget):
-    """The last run scripts of this mode in a row, smaller, framed like a group; Ctrl+1..4 run them"""
+class SecondaryButton(Button):
+    """Bottom row of the hotbox: lower and quieter than the script buttons, a grey line icon, no stripe"""
 
-    CAPTION = "Recent"
-    SIZE = (180, 34)
-    FONT = 11
+    SIZE = (190, 34)
+    FONT = 12
+    COLOR, TEXT = "#262626", "#b4b4b4"
 
-    def __init__(self, scripts: list[script_lib.Script], parent: QWidget = None):
-        super().__init__(parent)
-        self.buttons = [ScriptButton(script, parent=self, size=self.SIZE, fontSize=self.FONT,
-                                     keycap=f"{RECENT_MODIFIER}{index + 1}") for index, script in enumerate(scripts)]
-        layout = QHBoxLayout(self)
-        pad = ScriptGrid.FRAME_PAD
-        layout.setContentsMargins(pad, ScriptGrid.CAPTION_HEIGHT + 4, pad, pad)
-        layout.setSpacing(ScriptGrid.COLUMN_GAP - 4)
-        for button in self.buttons:
-            layout.addWidget(button)
-
-    def buttonForNumber(self, number: int):
-        """Button of Ctrl+number (1-based), None if there is no such one"""
-        return self.buttons[number - 1] if 1 <= number <= len(self.buttons) else None
-
-    def paintEvent(self, event):
-        if not self.buttons:
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        paintGroupFrame(painter, QRectF(self.rect()), self.CAPTION, self.buttons)
-        painter.end()
+    def __init__(self, label: str, icon: str | None = None, keycap: str | None = None, parent=None):
+        super().__init__(label, self.COLOR, self.TEXT, icon, parent, size=self.SIZE, fontSize=self.FONT, style="row",
+                         accent=self.TEXT, keycap=keycap)
+        self.showStripe = False
 
 
 class HLayout(QHBoxLayout):

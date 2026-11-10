@@ -1,5 +1,6 @@
 #label:Reload Caches
 #group:Scene
+#hotkey:e
 #textcolor:#8fffc1
 #icon:reload.svg
 

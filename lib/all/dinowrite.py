@@ -1,4 +1,5 @@
 #label:Flipbook
+#group:Output
 #textcolor:#5bff77
 #buttoncolor:#0d121b
 #icon:app_dino_dance.svg

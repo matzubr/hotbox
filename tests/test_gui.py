@@ -224,7 +224,8 @@ def test_script_manager_browses_without_errors(houdini, library):
     folders = [manager.folders_list.item(i).text() for i in range(manager.folders_list.count())]
     assert folders == ["(root)", "Lop", "Sop"]
     assert manager.name_lineedit.text() == "Flipbook"
-    assert Path(manager.file_lineedit.text()) == library / "all" / "flipbook.py"
+    assert Path(manager.file_lineedit.toolTip()) == library / "all" / "flipbook.py"
+    assert manager.file_lineedit.text() == f"{library.parent.name}/lib/all/flipbook.py"
 
     manager.folders_list.setCurrentRow(2)
     assert manager.name_lineedit.text() == "Merge Absolute"
@@ -374,7 +375,7 @@ def test_shipped_icons_exist_or_are_houdini_names():
                 assert (ICONS_DIR / script.icon).is_file() or re.fullmatch(r"[A-Z]+_\w+", script.icon), script.relpath
 
 
-def test_script_manager_preview_follows_edits(houdini, library):
+def test_script_manager_preview_follows_edits(houdini, library, discard_changes):
     from hotbox.utils.manager import ScriptManager
 
     manager = ScriptManager(lib_folder=library)
@@ -389,7 +390,7 @@ def test_script_manager_preview_follows_edits(houdini, library):
 def _select(manager, folder, name):
     folders = [manager.folders_list.item(i).text() for i in range(manager.folders_list.count())]
     manager.folders_list.setCurrentRow(folders.index(folder))
-    files = [manager.files_list.item(i).text() for i in range(manager.files_list.count())]
+    files = manager.fileTexts()
     manager.files_list.setCurrentRow(files.index(name))
 
 
@@ -415,7 +416,7 @@ def test_script_manager_ref_field(houdini, library):
     manager.close()
 
 
-def test_preview_does_not_blink_while_typing(houdini, library):
+def test_preview_does_not_blink_while_typing(houdini, library, discard_changes):
     from hotbox.utils.manager import ScriptManager
 
     manager = ScriptManager(lib_folder=library)
@@ -633,3 +634,121 @@ def test_reload_picks_up_every_module(tmp_path):
     result = subprocess.run([sys.executable, script.as_posix()], capture_output=True, text=True, timeout=60,
                             env={**os.environ, "QT_QPA_PLATFORM": "offscreen"}, check=False)
     assert result.stdout.strip().endswith("ok"), result.stderr
+
+
+# --- second UI pass: fixed font, group stripes, Script Manager states ---------------------------------------------
+
+def test_row_labels_keep_the_font_size_and_are_cut(houdini):
+    from hotbox.utils.widgets import ScriptButton
+
+    script = scripts.Script(Path("x.py"), "x.py", {"label": "Select Every Time-Dependent Node Here", "hotkey": "a"})
+    button = ScriptButton(script)
+    assert button.labelFont.pointSizeF() == ScriptButton.FONT
+    assert button.lines[0].endswith("…") and button.toolTip()
+
+
+def test_group_stripe_is_the_group_color_and_lone_groups_are_framed(houdini, hou, tmp_path, monkeypatch):
+    lib = tmp_path / "lib"
+    write_script(lib, "all/a.py", "#label:A\n#group:G\n#textcolor:#ff0000\n")
+    write_script(lib, "all/b.py", "#label:B\n#group:G\n#textcolor:#00ff00\n")
+    write_script(lib, "all/c.py", "#label:C\n#group:Lone\n")
+    box = _hotbox(monkeypatch, hou, lib)
+    by_label = {b.script.label: b for b in box.scripts_buttons.buttons}
+    assert by_label["B"].stripeColor == QColor("#ff0000") and by_label["B"].accentColor == QColor("#00ff00")
+    assert [name for name, _ in box.scripts_buttons.groups] == ["G", "Lone"]
+    assert box.central_button.label == "Network: Sop" and box.central_button.keycapLabel() == "Esc"
+    box.close()
+
+
+def _press(widget, key, text=""):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    widget.keyPressEvent(QKeyEvent(QEvent.KeyPress, key, Qt.NoModifier, text))
+
+
+def test_hotkey_field_captures_the_key(houdini):
+    from hotbox.utils.editors import HotkeyEdit
+
+    field = HotkeyEdit()
+    _press(field, Qt.Key_K, "k")
+    assert field.text() == "K"
+    _press(field, Qt.Key_A, "ф")  # Russian layout: the same physical key
+    assert field.text() == "A"
+    _press(field, Qt.Key_F5)
+    assert field.text() == "F5"
+    _press(field, Qt.Key_Return, "\r")  # not a hotkey: unchanged
+    assert field.text() == "F5"
+    _press(field, Qt.Key_Backspace)
+    assert field.text() == ""
+
+
+def test_manager_save_is_active_only_with_changes(houdini, library, discard_changes):
+    from hotbox.utils.manager import ScriptManager
+
+    manager = ScriptManager(lib_folder=library)
+    assert not manager.save_button.isEnabled() and "●" not in manager.title_bar.title.text()
+    assert manager.hotkey_lineedit.text() == "F"  # shown as the keycap
+    manager.name_lineedit.setText("Flip")
+    assert manager.save_button.isEnabled() and "●" in manager.title_bar.title.text()
+    manager.save()
+    assert not manager.save_button.isEnabled()
+    assert (library / "all" / "flipbook.py").read_text(encoding="utf-8").startswith("#label:Flip\n#icon:app_dino_dance.svg\n#hotkey:f\n")
+    manager.close()
+
+
+def test_manager_hotkey_conflict_names_the_button(houdini, library):
+    from hotbox.utils.manager import ScriptManager
+
+    manager = ScriptManager(lib_folder=library)
+    _select(manager, "Sop", "merge_abs.py")
+    manager.hotkey_lineedit.setText("1")
+    assert "1 is taken: Merge Relative (Sop/merge_rel.py)" in manager.warning_label.text()
+    manager.hotkey_lineedit.setText("2")
+    manager.close()
+
+
+def test_manager_asks_before_dropping_header_edits(houdini, library, monkeypatch):
+    from hotbox.utils import manager as manager_module
+    from hotbox.utils.manager import ScriptManager
+
+    asked = []
+    monkeypatch.setattr(manager_module.QMessageBox, "question",
+                        lambda *args, **kwargs: asked.append(args[2]) or manager_module.QMessageBox.Save)
+    manager = ScriptManager(lib_folder=library)
+    _select(manager, "(root)", "flipbook.py")
+    manager.group_lineedit.setText("Output")
+    _select(manager, "(root)", "save.py")
+    assert asked == ["Save the changes in all/flipbook.py?"]
+    assert "#group:Output" in (library / "all" / "flipbook.py").read_text(encoding="utf-8")
+    assert manager.name_lineedit.text() == "Save HIP"
+    manager.close()
+
+
+def test_manager_list_search_duplicate_delete(houdini, library, monkeypatch):
+    from hotbox.utils import manager as manager_module
+    from hotbox.utils.manager import FILE_ROLE, HOTKEY_ROLE, ScriptManager
+
+    write_script(library, "multiple/flip.py", "#ref:all/flipbook.py\n", body="")
+    manager = ScriptManager(lib_folder=library)
+    item = manager.files_list.item(0)
+    assert (item.text(), item.data(FILE_ROLE), item.data(HOTKEY_ROLE)) == ("Flipbook", "flipbook.py", "F")
+
+    manager.search_lineedit.setText("merge")  # every folder of the mode
+    assert manager.fileTexts() == ["Sop/merge_abs.py", "Sop/merge_rel.py"]
+    assert manager.currentScript().relpath == "Sop/merge_abs.py"
+    manager.search_lineedit.setText("")
+
+    _select(manager, "(root)", "flipbook.py")
+    copy = manager.duplicateScript()
+    assert copy.name == "flipbook_copy.py" and manager.currentScript().path == copy
+    text = copy.read_text(encoding="utf-8")
+    assert "#label:Flipbook Copy" in text and "#hotkey" not in text
+    asked = []
+    monkeypatch.setattr(manager_module.QMessageBox, "question",
+                        lambda *args, **kwargs: asked.append(args[2]) or manager_module.QMessageBox.Yes)
+    assert manager.deleteScript() and not copy.exists()
+    _select(manager, "(root)", "flipbook.py")
+    assert manager.deleteScript()
+    assert "multiple/flip.py" in asked[-1]  # its #ref breaks
+    manager.close()

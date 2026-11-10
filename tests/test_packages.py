@@ -87,7 +87,7 @@ def test_packages_window_toggles_and_manager_follows(houdini, library):
     manager = ScriptManager(lib_folder=library)
     manager.folders_list.setCurrentRow([manager.folders_list.item(i).text()
                                         for i in range(manager.folders_list.count())].index("Object"))
-    items = lambda: [manager.files_list.item(i).text() for i in range(manager.files_list.count())]
+    items = lambda: manager.fileTexts()
     assert items() == ["alembic.py  — off", "cam_import.py  — off"]
     assert "blackpoint, other (turned off)" in manager.files_list.item(0).toolTip()
 
@@ -111,7 +111,7 @@ def test_manager_writes_package_field(houdini, library):
     from hotbox.utils.manager import ScriptManager
 
     manager = ScriptManager(lib_folder=library)
-    assert manager.files_list.item(0).text() == "flipbook.py"
+    assert manager.fileTexts()[0] == "flipbook.py"
     manager.package_lineedit.setText("trehmer")
     manager.save()
     assert (library / "all" / "flipbook.py").read_text(encoding="utf-8") == "#label:Flipbook\n#package:trehmer\npass\n"

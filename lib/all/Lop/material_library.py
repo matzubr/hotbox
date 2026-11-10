@@ -1,7 +1,7 @@
 #label:Material Library
 #group:Materials
 #textcolor:#f5a3d6
-#hotkey:m
+#hotkey:l
 #icon:material.svg
 
 import hou

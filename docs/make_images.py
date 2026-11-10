@@ -35,7 +35,7 @@ PACKAGE = "studio-name"
 
 def anonymousLibrary() -> Path:
     """Copy of lib/ with every #package renamed to PACKAGE; returns the folder that contains 'lib'"""
-    work = Path(tempfile.mkdtemp())
+    work = Path(tempfile.mkdtemp()) / "hotbox"  # the File field shows hotbox/lib/...
     shutil.copytree(ROOT / "lib", work / "lib", ignore=shutil.ignore_patterns("__pycache__"))
     for script in (work / "lib").rglob("*.py"):
         text = script.read_text(encoding="utf-8")
@@ -114,7 +114,7 @@ def main():
     script_manager.finishPopIn()
     folders = [script_manager.folders_list.item(i).text() for i in range(script_manager.folders_list.count())]
     script_manager.folders_list.setCurrentRow(folders.index("Object"))
-    files = [script_manager.files_list.item(i).text() for i in range(script_manager.files_list.count())]
+    files = script_manager.fileTexts()
     script_manager.files_list.setCurrentRow(files.index("save_project.py"))
     QTest.qWait(500)
     app.processEvents()

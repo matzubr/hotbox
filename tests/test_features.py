@@ -1,9 +1,9 @@
-"""Several lib folders, search, recent scripts, the error window, new scripts."""
+"""Several lib folders, search, the error window, new scripts."""
 from unittest.mock import MagicMock
 
 import pytest
 from conftest import write_script
-from hotbox.utils import runner, scripts, settings
+from hotbox.utils import runner, scripts
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QLabel
@@ -85,7 +85,7 @@ def test_hotbox_and_manager_read_every_folder(houdini, tmp_path, monkeypatch):
     box.close()
 
     manager = ScriptManager(lib_folder=[mine, builtin])
-    names = [manager.files_list.item(i).text() for i in range(manager.files_list.count())]
+    names = manager.fileTexts()
     assert names == ["flipbook.py", "mine.py  · mine"]  # where a script comes from, built-in lib unmarked
     manager.close()
 
@@ -137,42 +137,8 @@ def test_escape_ends_search_before_closing(houdini, library, monkeypatch):
     box.keyPressEvent(_key(Qt.Key_Escape))
     assert box.searchText is None
     assert box.isVisible()
-    assert box.central_button.label == "Sop"
+    assert box.central_button.label == "Network: Sop"
     assert not any(b.dimmed for b in box.script_buttons)
-    box.close()
-
-
-# --- recent -------------------------------------------------------------------------------------------------------
-
-def test_recent_scripts_are_saved_per_user():
-    for relpath in ("a.py", "b.py", "a.py"):
-        settings.addRecent("all", relpath)
-    assert settings.recentScripts("all") == ["a.py", "b.py"]
-    assert settings.recentScripts("single") == []
-    for index in range(settings.RECENT_KEEP + 5):
-        settings.addRecent("all", f"{index}.py")
-    assert len(settings.recentScripts("all")) == settings.RECENT_KEEP
-
-
-def test_recent_row_shows_scripts_of_this_context(houdini, library, monkeypatch):
-    from PySide6.QtTest import QTest
-
-    ran = MagicMock()
-    monkeypatch.setattr(runner, "runScript", ran)
-    for relpath in ("save.py", "Lop/other.py", "Sop/merge.py", "gone.py"):
-        settings.addRecent("all", relpath)
-
-    box = _hotbox(monkeypatch, library)
-    assert [b.script.relpath for b in box.recent_row.buttons] == ["Sop/merge.py", "save.py"]  # newest first
-    box.recent_row.buttons[1].click()
-    QTest.qWait(box.FADE_OUT + 150)
-    assert settings.recentScripts("all")[0] == "save.py"
-
-    data = settings.load()
-    data["recent_count"] = 0
-    settings.save(data)
-    box = _hotbox(monkeypatch, library)
-    assert box.recent_row is None
     box.close()
 
 
@@ -303,7 +269,7 @@ def test_houdini_icon_names_from_the_archive(icons_zip):
     assert "save.svg" in iconbrowser.hotboxIconNames()
 
 
-def test_icon_browser_search_and_choose(houdini, icons_zip, library):
+def test_icon_browser_search_and_choose(houdini, icons_zip, library, discard_changes):
     from hotbox.utils.iconbrowser import IconBrowser
     from hotbox.utils.manager import ScriptManager
 
@@ -371,7 +337,7 @@ def test_add_icon_files(tmp_path):
     assert addIconFiles([folder / "tool.svg"], folder) == ["tool.svg"]  # already there
 
 
-def test_added_icons_go_to_your_lib_folder_and_are_found(houdini, tmp_path, icons_zip, monkeypatch):
+def test_added_icons_go_to_your_lib_folder_and_are_found(houdini, tmp_path, icons_zip, monkeypatch, discard_changes):
     from hotbox.utils import widgets
     from hotbox.utils.iconbrowser import userIconFolder
     from hotbox.utils.manager import ScriptManager

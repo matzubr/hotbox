@@ -597,27 +597,3 @@ def test_script_description_from_comment_or_docstring(tmp_path):
     assert scripts.scriptDescription(nothing) is None
     library = {s.relpath: s for s in scripts.scanLibrary([lib], "all")}
     assert scripts.worksOn(library["a.py"]) == "Nothing selected, any network"
-
-
-def test_recent_buttons_run_with_ctrl_number(houdini, tmp_path, monkeypatch):
-    from conftest import write_script
-    from hotbox import main
-    from hotbox.utils import settings, utility
-    from hotbox.utils.qt import QEvent, Qt
-    from PySide6.QtGui import QKeyEvent
-
-    lib = tmp_path / "lib"
-    write_script(lib, "all/a.py", "#label:A\n#hotkey:1\n")
-    write_script(lib, "all/b.py", "#label:B\n")
-    settings.addRecent("all", "b.py")
-    monkeypatch.setattr(utility, "detectContext", lambda: utility.Context("all", "Sop", "Sop", None))
-    box = main.HotBox(lib_dir=lib)
-    assert box.recent_row.buttons[0].keycapLabel().endswith("1")
-    triggered = []
-    monkeypatch.setattr(box, "trigger", lambda button, action=None: triggered.append(button))
-    box.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_1, Qt.ControlModifier, "1"))
-    assert triggered == [box.recent_row.buttons[0]]  # Ctrl+1: Recent, not the script with hotkey 1
-    box.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_1, Qt.NoModifier, "1"))
-    assert triggered[-1].script.label == "A"
-    assert box.backdropRect().contains(box.central_button.geometry())
-    box.grab()

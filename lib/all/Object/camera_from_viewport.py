@@ -1,5 +1,5 @@
 #label:Camera from View
-#group:View
+#group:Camera
 #textcolor:#d6f5a3
 #hotkey:c
 #icon:camera.svg

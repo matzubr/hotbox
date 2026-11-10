@@ -1,5 +1,6 @@
 #label:Jump to Path
 #package:qLib
+#group:Network
 #textcolor:#c9b8ff
 #hotkey:j
 #icon:jump.svg

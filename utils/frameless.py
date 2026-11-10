@@ -190,7 +190,7 @@ class TitleBar(QWidget):
         self.title.setFont(buttonFont(12))
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setFixedHeight(30)
-        self.title.setStyleSheet(f"background-color:{COLORS['grey']}; border-radius:10px; color:{COLORS['white']};")
+        self.title.setStyleSheet(f"background: transparent; color:{COLORS['white']};")
         self.title.setCursor(Qt.OpenHandCursor)
 
         items = [dino, self.title]

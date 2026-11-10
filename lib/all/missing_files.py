@@ -1,5 +1,6 @@
 #label:Missing Files
 #group:Scene
+#hotkey:i
 #textcolor:#ff8f8f
 #icon:file-missing.svg
 

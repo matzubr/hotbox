@@ -270,7 +270,7 @@ def groupBlocks(scripts: list[Script]) -> list[tuple[str, list[Script]]]:
     """Blocks of buttons in a column: (group name, scripts) for each #group, ('', [script]) for ungrouped ones.
 
     Blocks are sorted by group name / label, scripts in a group by label: the order doesn't depend on file names.
-    A group with one script is shown as a plain button.
+    A group with one script is framed too: every #group has its caption.
     """
     groups: dict[str, list[Script]] = {}
     blocks: list[tuple[str, list[Script]]] = []
@@ -280,10 +280,7 @@ def groupBlocks(scripts: list[Script]) -> list[tuple[str, list[Script]]]:
         else:
             blocks.append(("", [script]))
     for name, members in groups.items():
-        if len(members) == 1:  # a group of one is just a button
-            blocks.append(("", members))
-        else:
-            blocks.append((name, sorted(members, key=lambda s: s.label.casefold())))
+        blocks.append((name, sorted(members, key=lambda s: s.label.casefold())))
     return sorted(blocks, key=lambda block: (block[0] or block[1][0].label).casefold())
 
 
@@ -418,6 +415,23 @@ def createScript(root: Path, mode: str, folder: str, filename: str, label: str =
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(header + SCRIPT_TEMPLATES[mode])
     return path
+
+
+def freeCopyPath(path: Path) -> Path:
+    """'x.py' -> 'x_copy.py' next to it, 'x_copy2.py'... when taken"""
+    path = Path(path)
+    for number in range(1, 1000):
+        candidate = path.with_name(f"{path.stem}_copy{'' if number == 1 else number}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise ValueError(f"No free name for a copy of {path.name}")
+
+
+def refUsers(lib_roots, path: Path) -> list[str]:
+    """Scripts ('multiple/x.py') that run the file through #ref"""
+    path = Path(path).resolve()
+    return [f"{mode}/{s.relpath}" for mode in MODES for s in scanLibrary(lib_roots, mode)
+            if s.ref and s.runPath is not None and Path(s.runPath).resolve() == path]
 
 
 def overrides(lib_roots, root: Path, key: str) -> tuple[list[Path], list[Path]]:

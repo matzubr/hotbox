@@ -1,4 +1,4 @@
-"""Per-user HotBox settings (which packages are on, recent scripts), stored outside the tool folder.
+"""Per-user HotBox settings (which packages are on), stored outside the tool folder.
 
 $HOUDINI_USER_PREF_DIR/hotbox/settings.json (HOTBOX_SETTINGS overrides the path), so the tool folder can
 be copied between users and every user keeps their own choice.
@@ -71,35 +71,3 @@ def setPackageEnabled(name: str, enabled: bool) -> None:
     data = load()
     data.setdefault("packages", {})[name] = bool(enabled)
     save(data)
-
-
-# --- recent scripts ----------------------------------------------------------------------------------------------
-
-RECENT_KEEP = 12  # remembered per mode
-RECENT_SHOWN = 4  # default "recent_count": buttons in the Recent row (0 hides it)
-
-
-def recentCount(data: dict | None = None) -> int:
-    data = load() if data is None else data
-    try:
-        return max(0, int(data.get("recent_count", RECENT_SHOWN)))
-    except (TypeError, ValueError):
-        return RECENT_SHOWN
-
-
-def recentScripts(mode: str, data: dict | None = None) -> list[str]:
-    """Relpaths of the last run scripts of a mode (all/multiple/single), newest first"""
-    data = load() if data is None else data
-    items = data.get("recent", {}).get(mode, [])
-    return [item for item in items if isinstance(item, str)]
-
-
-def addRecent(mode: str, relpath: str) -> None:
-    data = load()
-    recent = data.setdefault("recent", {})
-    items = [relpath] + [item for item in recent.get(mode, []) if item != relpath]
-    recent[mode] = items[:RECENT_KEEP]
-    try:
-        save(data)
-    except OSError as e:
-        print(f"HotBox: can't save {settingsPath().as_posix()}: {e}")

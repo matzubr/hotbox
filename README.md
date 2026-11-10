@@ -21,25 +21,25 @@ what you are doing and runs them.
 
 Deeper folders (`lib/all/Lop/Instances/`) are not shown.
 
-Buttons go top to bottom in columns (context scripts, then root scripts), at most 6 per column, and all
-columns share one grid, so rows are on the same level. Single buttons and `#group` blocks are sorted by group name /
-label (not by file names). A group is a framed block with a caption; it is never split between columns; a group with
-one button is a plain button.
+Buttons go top to bottom in columns (context scripts, then root scripts), at most 6 per column, and
+each column goes down at its own pace. Single buttons and `#group` blocks are sorted by group name /
+label (not by file names). A group is a framed block with a caption; it is never split between columns (a group
+with one button is framed too). The stripe of the buttons of a group has the group color (the color of its first
+button), icons keep the color of their script.
 
 A button is one line: the script color on the stripe and the icon (line icons from `icons/` take the color, Houdini
 icons keep theirs), the label in neutral grey with the hotkey letter underlined, the hotkey in a keycap on the right.
 Hover a button for what the script does (the first comment of its code or the docstring of `main()`) and what it works
 on. The buttons stand on a dark backdrop, so the network behind doesn't mix with them.
 
-Bottom row: open the HotBox folder · current context (click to close) · Script Manager.
+Bottom row, lower and quieter: open the HotBox folder · where the hotbox opened (`Network: Sop`, `Node: cam`,
+`Nodes: Sop`; click or `Esc` closes) · Script Manager.
 `Esc` or `` ` `` closes the hotbox, so does a click anywhere that is not a button (outside or between buttons). Clicking a button or pressing its hotkey closes the hotbox and runs the script.
 Hotkeys work in the Russian keyboard layout too (the same physical key: `f` = `а`).
 Everything a script does is one undo step.
 
 **Tab** starts search: type a part of a label (in any keyboard layout), the other buttons fade out, `Enter` runs the
 first match, `Esc` or `Tab` ends the search.
-**Recent**: a row of smaller buttons with the last 4 scripts you ran that fit the current selection/network;
-`Ctrl+1`…`Ctrl+4` (`Cmd` on macOS) run them.
 
 Animations: on opening the buttons grow in from their centers with a small spring, starting at the cursor and
 spreading outwards (farther buttons come a bit later). On hover a white wave spreads from the cursor, the button gets lighter and a bit bigger (with the text).
@@ -85,6 +85,14 @@ the button; like the buttons, its windows grow in from the center with a spring 
 about hotkeys already used by scripts shown together with it and about missing icons. For a `#ref` it edits only
 the reference's own header (inherited values are shown greyed out); the **Ref** field sets or changes the target.
 Ref and Package complete existing values inline (Tab accepts), the arrow next to them lists them.
+The fields go Name → Group → Hotkey → Icon → Accent (stripe and line icon, `#textcolor`) → Background
+(`#buttoncolor`); Ref and Package are folded under **Advanced** (open by themselves for a script that uses them).
+**Hotkey**: click the field and press the key (shown as its keycap, `K`; Backspace clears); a key taken by a script
+shown together with this one is named right away (`K is taken: Background`). The script list shows button names with
+the file in grey under them and the hotkey on the right; the search field above it finds scripts of every folder of the
+mode by name or file. Right click a script: Duplicate (`name_copy.py`, without the hotkey), Open file, Delete (the
+question names the scripts that `#ref` it). Unsaved changes put a dot in the title and turn Save on; switching to
+another script or closing asks whether to save them. The footer shows `hotbox/lib/...`, the full path in its tooltip.
 **+ New script** (Ctrl+N) creates the file right there: name (the file name follows it), mode, folder (existing
 folders, the selected node type or network types are offered) and, with `HOTBOX_PATH`, which lib folder to save in;
 the new script opens in the code panel with a starting body for its mode.
@@ -114,8 +122,7 @@ replaces the built-in one), and `#ref` targets are looked up the same way. The S
 these folders with the folder name; "Open Folder" opens the first one. Separator: `;` (`:` works too on
 Linux/macOS).
 
-Recent scripts and the package switches are saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json`;
-`"recent_count": 0` there hides the Recent row.
+The package switches are saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json`.
 
 ### Packages: studio specific scripts
 
@@ -164,7 +171,7 @@ Tools seen in other Houdini libraries come as packages named after the library (
 
 | Package | Scripts |
 |---|---|
-| `qLib` | Recover Crash, Jump to Path, **Viewport**: Templates / Guides / Background / Time Dependency, **Select**: Bypassed / Time-Dependent / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
+| `qLib` | Recover Crash, Jump to Path, **Viewport**: Templates / Guides / Background / Time-Dep. Badges, **Select**: Bypassed / Animated (time-dependent) / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
 | `Aelib` | Save Incremental, Open HIP Folder, Lock Camera (cam, hlight) |
 | `LV-Tools` | Space Below (one node), Wedge (Wedge -> ROP Geometry Output for picked parameters), Load Wedges (ropgeometry TOP: File SOP per written wedge + Switch), Transfer Transform (two objects), Cache Size (filecache) |
 | `BeeHou` | Focus Target (cam: a null that drives the focus distance) |

@@ -2,7 +2,7 @@
 #package:qLib
 #group:Select
 #textcolor:#ffe08f
-#hotkey:h
+#hotkey:m
 #icon:select.svg
 
 # Nothing selected: the node changed last. Again (with the selection): adds the next older one, and so on

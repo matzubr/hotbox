@@ -13,6 +13,7 @@ from .qt import (
     QFontDatabase,
     QHBoxLayout,
     QIcon,
+    QKeySequence,
     QLineEdit,
     QMenu,
     QPlainTextEdit,
@@ -28,7 +29,7 @@ from .qt import (
     QWidget,
 )
 from .theme import COLORS
-from .widgets import ICONS_DIR
+from .widgets import ICONS_DIR, keycapText
 
 
 class CompletingLineEdit(QLineEdit):
@@ -92,6 +93,53 @@ class CompletingLineEdit(QLineEdit):
         else:
             self.setText(choice)
         self.textEdited.emit(self.text())
+
+
+# Keys a hotbox hotkey can't be: the hotbox itself uses them
+_NOT_HOTKEYS = {int(Qt.Key_Return), int(Qt.Key_Enter), int(Qt.Key_Space), int(Qt.Key_QuoteLeft),
+                int(Qt.Key_Tab), int(Qt.Key_Backtab)}
+_MODIFIER_KEYS = {int(Qt.Key_Shift), int(Qt.Key_Control), int(Qt.Key_Alt), int(Qt.Key_Meta), int(Qt.Key_AltGr)}
+
+
+def hotkeyFromEvent(event) -> str | None:
+    """The hotkey a key press means: 'K', '1', 'F5'; the Latin key for the Russian layout; None for other keys"""
+    from . import scripts as script_lib
+
+    key = int(event.key())
+    if key in _NOT_HOTKEYS or key in _MODIFIER_KEYS:
+        return None
+    latin = script_lib.latinKey(event.text())
+    if latin:
+        return keycapText(latin)
+    text = QKeySequence(key).toString()
+    if len(text) == 1 and text.isalnum():
+        return text.upper()
+    if re.fullmatch(r"F\d{1,2}", text):
+        return text
+    return None
+
+
+class HotkeyEdit(QLineEdit):
+    """Click and press the key: the key is the value, shown as its keycap (K, 1, F5). Backspace / Delete clear it."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setPlaceholderText("click, then press a key")
+        self.setToolTip("Click here and press the key: a letter, a digit or F1..F12. Backspace clears it.\n"
+                        "It works in the Russian keyboard layout too (the same physical key).")
+        self.setContextMenuPolicy(Qt.NoContextMenu)
+
+    def keyPressEvent(self, event):
+        key = int(event.key())
+        if key in (int(Qt.Key_Backspace), int(Qt.Key_Delete)):
+            self.setText("")
+        elif key == int(Qt.Key_Escape):
+            self.clearFocus()  # not the window's Esc (close)
+        else:
+            hotkey = hotkeyFromEvent(event)
+            if hotkey:
+                self.setText(hotkey)
+        event.accept()
 
 
 class ChoiceField(QWidget):

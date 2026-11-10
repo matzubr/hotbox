@@ -45,6 +45,28 @@ def user_settings(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def no_modal_questions(monkeypatch):
+    """A QMessageBox a test doesn't expect would block the run forever: fail instead"""
+    try:
+        from PySide6.QtWidgets import QMessageBox
+    except ImportError:
+        return
+
+    def unexpected(*args, **kwargs):
+        pytest.fail(f"unexpected question: {args[2] if len(args) > 2 else args}")
+
+    monkeypatch.setattr(QMessageBox, "question", unexpected)
+
+
+@pytest.fixture
+def discard_changes(monkeypatch):
+    """Unsaved edits are dropped when the Script Manager asks (closing after editing without Save)"""
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Discard)
+
+
 @pytest.fixture
 def hou():
     hou = sys.modules["hou"]

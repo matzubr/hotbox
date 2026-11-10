@@ -38,6 +38,15 @@ def start():
     return HotBox()
 
 
+def contextLabel(context) -> str:
+    """Central button: what the hotbox is for now ('Network: Sop', 'Node: cam', 'Nodes: Sop')"""
+    if context.mode == "single":
+        return f"Node: {context.title}"
+    if context.mode == "multiple":
+        return f"Nodes: {context.context}" if context.context else "Nodes"
+    return f"Network: {context.title}" if context.context else context.title
+
+
 class HotBox(QWidget):
     """Keys: hotkeys run their script, Tab starts search (type, Enter runs the first match, Esc/Tab ends it), Esc and ` close."""
 
@@ -140,13 +149,14 @@ class HotBox(QWidget):
                                            settings.enabledChecker(data))
         self.scripts_buttons = widgets.ScriptGrid(library, context=self.context.context, parent=self)
         self.keybindings = self.scripts_buttons.keybindings()
-        self.recent_row = self.recentRow(library, data)
-        self.script_buttons = self.scripts_buttons.buttons + (self.recent_row.buttons if self.recent_row else [])
+        self.script_buttons = self.scripts_buttons.buttons
 
-        self.open_hotbox_button = widgets.Button("Open Folder")
+        self.open_hotbox_button = widgets.SecondaryButton("Open Folder", "folder.svg")
         self.open_hotbox_button.setToolTip("The HotBox lib folder (yours with HOTBOX_PATH)")
-        self.central_button = widgets.Button(self.context.title, icon=self.context.icon)
-        self.script_manager_button = widgets.Button("Script Manager")
+        self.central_button = widgets.SecondaryButton(contextLabel(self.context), keycap="Esc")
+        self.central_button.setToolTip("Where the hotbox opened: its scripts are the ones for this.\n"
+                                       "Click (or Esc) closes the hotbox. Tab: search")
+        self.script_manager_button = widgets.SecondaryButton("Script Manager", "gear.svg")
 
         central_layout = widgets.HLayout([self.open_hotbox_button, self.central_button, self.script_manager_button])
         central_layout.setSpacing(widgets.ScriptGrid.COLUMN_GAP)
@@ -158,8 +168,6 @@ class HotBox(QWidget):
         layout.setContentsMargins(margin, margin, margin, margin)
         layout.setSpacing(widgets.ScriptGrid.ROW_GAP * 2)
         layout.addWidget(self.scripts_buttons, 0, Qt.AlignHCenter)
-        if self.recent_row is not None:
-            layout.addWidget(self.recent_row, 0, Qt.AlignHCenter)
         layout.addLayout(central_layout)
         self.setLayout(layout)
         self.animationOverlay = widgets.AnimationOverlay(self)
@@ -171,18 +179,10 @@ class HotBox(QWidget):
         for button, action in actions.items():
             button.clicked.connect(lambda checked=False, b=button, a=action: self.trigger(b, a))
 
-    def recentRow(self, library, data):
-        """Row of the last run scripts that make sense here (shown in this context), None if there are none"""
-        count = settings.recentCount(data)
-        in_context, root = scripts.scriptsForContext(library, self.context.context)
-        shown = {script.relpath: script for script in in_context + root}
-        recent = [shown[relpath] for relpath in settings.recentScripts(self.mode, data) if relpath in shown][:count]
-        return widgets.RecentRow(recent, parent=self) if recent else None
-
     def backdropRect(self) -> QRect:
         """Around all the buttons and group frames"""
         rect = QRect()
-        for widget in (self.scripts_buttons, self.recent_row, self.open_hotbox_button, self.central_button,
+        for widget in (self.scripts_buttons, self.open_hotbox_button, self.central_button,
                        self.script_manager_button):
             if widget is not None and widget.isVisible():
                 rect = rect.united(widget.geometry())
@@ -240,7 +240,6 @@ class HotBox(QWidget):
         if script.runPath is None:
             runner.status(f"HotBox: {script.relpath}: {script.error}", error=True)
             return
-        settings.addRecent(self.mode, script.relpath)
         runner.runScript(script.runPath, label=script.label,
                          on_error=lambda error: errors.showScriptError(error, self.lib_roots))
 
@@ -261,11 +260,6 @@ class HotBox(QWidget):
         if self.searchText is not None:
             self.searchKey(event)
             return
-        recent = self.recentButtonFor(event)
-        if recent is not None:
-            if not event.isAutoRepeat():
-                self.trigger(recent, lambda s=recent.script: self.runScript(s))
-            return
         codes = widgets.eventKeyCodes(event)
         if any(code in widgets.CLOSE_KEYS for code in codes):
             self.close()
@@ -276,13 +270,6 @@ class HotBox(QWidget):
             self.trigger(button, lambda s=button.script: self.runScript(s))
             return
         super().keyPressEvent(event)
-
-    def recentButtonFor(self, event):
-        """Ctrl+1..9 (Cmd on macOS): the Recent button with that number"""
-        if self.recent_row is None or not event.modifiers() & Qt.ControlModifier:
-            return None
-        number = int(event.key()) - int(Qt.Key_0)
-        return self.recent_row.buttonForNumber(number) if 1 <= number <= 9 else None
 
     # --- search -------------------------------------------------------------------------------------------------
 
@@ -314,7 +301,7 @@ class HotBox(QWidget):
             match.startHover()
         self._searchMatch = match
         if text is None:
-            self.central_button.updateText(self.context.title)
+            self.central_button.updateText(contextLabel(self.context))
         else:
             self.central_button.updateText(f"Find: {text}_" if text else "Type to find…")
 

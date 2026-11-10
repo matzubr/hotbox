@@ -1,4 +1,4 @@
-#label:Time Dependency
+#label:Time-Dep. Badges
 #package:qLib
 #group:Viewport
 #textcolor:#b8e0ff
