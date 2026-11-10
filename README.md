@@ -158,7 +158,7 @@ are in packages: turn them on in the gear menu if you need them.
 | Object, nothing selected | Camera from View (new camera at the viewport view, looks through it) |
 | Sop, nothing selected | Object Merge Relative / Absolute (from node paths in the clipboard) |
 | Lop, nothing selected | Fetch Relative / Absolute, SOP Import (prims at `/$OS`, the import node name, followed by Render Geometry Settings: Karma geometry + instance velocity blur, Set or Create), Material Library + Assign, **Solaris**: Prim Paths (opens [DionysUSD](https://github.com/matzubr/DionysUSD) on the network, when it is installed) |
-| any node(s) selected | **Create**: Vop / Wrangle / Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box (name, padding in screen pixels, default 15 and remembered; Color... picks the color, default the first node's), Color by Type |
+| any node(s) selected | **Create**: Vop / Wrangle / Null, Convert Paths, **Copy**: Node Path / File Path, **Network**: Network Box (name, padding in screen pixels, default 15 and remembered; grey after black of the Houdini palette, Color... picks another), Color by Type |
 | several nodes | Explode Nodes, Object Merge Paste, Frame Range (all of them together) |
 | null | Render Node (`RENDER_` geo object under the current one, never on top of other nodes) |
 | null, several SOPs | **Solaris**: To Solaris (SOP Import in `/obj/lopnet1`, created when missing, prims at `/$OS` = `/IMPORT_<name>`, + Render Geometry Settings with geometry + instance velocity blur, its prim pattern tied to the import's path prefix) |
@@ -173,7 +173,7 @@ Tools seen in other Houdini libraries come as packages named after the library (
 
 | Package | Scripts |
 |---|---|
-| `qLib` | Recover Crash, Jump to Path, **Viewport**: Templates / Guides / Background / Time-Dep. Badges, **Select**: Bypassed / Animated (time-dependent) / Modified / Same Type, Sticky Note, Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
+| `qLib` | Recover Crash, Jump to Path, **Viewport**: Templates / Guides / Background / Time-Dep. Badges, **Select**: Bypassed / Animated (time-dependent) / Modified / Same Type, Sticky Note (no background, white large text), Reference Copy, Compile Block (Sop), Bypass, Open Folder (file nodes, ROPs), Open in MPlay (file), Dolly Zoom (cam) |
 | `Aelib` | Save Incremental, Open HIP Folder, Lock Camera (cam, hlight) |
 | `LV-Tools` | Space Below (one node), Wedge (Wedge -> ROP Geometry Output for picked parameters), Load Wedges (ropgeometry TOP: File SOP per written wedge + Switch), Transfer Transform (two objects), Cache Size (filecache) |
 | `BeeHou` | Focus Target (cam: a null that drives the focus distance) |

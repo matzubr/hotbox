@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 import hou
 
@@ -134,12 +135,40 @@ def pixelsToUnits(pixels: float, pane=None) -> float:
     return pixels / scale
 
 
+PALETTE_FILE = "config/opColorPalette.def"  # the Network Editor color palette (user's saved one first)
+BOX_GREY = (0.29, 0.29, 0.29)  # when the palette can't be read: about the grey after black
+
+
+def paletteColors(text: str) -> list[tuple[float, float, float]]:
+    """RGB triples of a palette file, in order (0-255 values scaled to 0-1)"""
+    numbers = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", text)]
+    if len(numbers) % 3 == 1:  # a count before the colors
+        numbers = numbers[1:]
+    colors = [tuple(numbers[i:i + 3]) for i in range(0, len(numbers) - 2, 3)]
+    if any(value > 1 for color in colors for value in color):
+        colors = [tuple(value / 255 for value in color) for color in colors]
+    return colors
+
+
+def boxColor():
+    """The palette color after black: a grey a bit lighter than the network"""
+    try:
+        with open(hou.findFile(PALETTE_FILE), encoding="utf-8") as palette:
+            colors = paletteColors(palette.read())
+    except (hou.OperationFailed, OSError, TypeError, ValueError):
+        colors = []
+    black = next((i for i, color in enumerate(colors) if max(color) == 0), None)
+    if black is not None and black + 1 < len(colors):
+        return hou.Color(*colors[black + 1])
+    return hou.Color(*BOX_GREY)
+
+
 BOX_HEADER_PX = 22  # the title bar of a network box, screen pixels (it scales with the zoom like the nodes)
 
 
 def networkBox(nodes, name: str, padding_px: float = 15, color=None, pane=None):
     """Network box around the nodes (those in the first node's network): padding_px screen pixels at the
-    current zoom on every side of the node shapes, the title bar above. color: hou.Color, default the first node's.
+    current zoom on every side of the node shapes, the title bar above. color: hou.Color, default boxColor() (palette grey after black).
     The box is sized from the nodes, not by fitAroundContents (its own margins are uneven: big on top, small below)"""
     parent = nodes[0].parent()
     nodes = [node for node in nodes if node.parent() == parent]
@@ -160,5 +189,5 @@ def networkBox(nodes, name: str, padding_px: float = 15, color=None, pane=None):
     box.setPosition(hou.Vector2(left - pad, bottom - pad))
     for node, rect in zip(nodes, rects):
         node.setPosition(hou.Vector2(rect[0], rect[1]))
-    box.setColor(color if color is not None else nodes[0].color())
+    box.setColor(color if color is not None else boxColor())
     return box

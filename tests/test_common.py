@@ -336,7 +336,10 @@ def _boxScene(hou, monkeypatch, answer):
 
 
 def test_network_box_padding_in_pixels_remembered(hou, monkeypatch):
+    from hotbox.common import layout
     from hotbox.utils import runner, settings
+
+    monkeypatch.setattr(layout, "boxColor", lambda: "grey")
 
     script, node, box = _boxScene(hou, monkeypatch, (0, ("FX", "20")))
     assert runner.runScript(script)
@@ -345,16 +348,46 @@ def test_network_box_padding_in_pixels_remembered(hou, monkeypatch):
     box.setAutoFit.assert_called_once_with(False)
     node.setPosition.assert_called_once_with((0.0, 0.0))  # back where it was after the box moved
     assert box.setSize.call_args.args[0] == pytest.approx((4.4, 2.0 + 0.4 + 0.22))  # + the 22 px title bar
-    box.setColor.assert_called_once_with(node.color())
+    box.setColor.assert_called_once_with(layout.boxColor())
     assert settings.scriptSetting("network_box", "padding") == 20
     hou.ui.selectColor.assert_not_called()
 
 
 def test_network_box_default_padding_and_picked_color(hou, monkeypatch):
+    from hotbox.common import layout
     from hotbox.utils import runner
 
-    script, node, box = _boxScene(hou, monkeypatch, (1, ("FX", "15")))
+    monkeypatch.setattr(layout, "boxColor", lambda: "grey")
+
+    script, _node, box = _boxScene(hou, monkeypatch, (1, ("FX", "15")))
     assert runner.runScript(script)
     assert hou.ui.readMultiInput.call_args.kwargs["initial_contents"] == ("OUT", "15")
-    hou.ui.selectColor.assert_called_once_with(node.color())
+    hou.ui.selectColor.assert_called_once_with(layout.boxColor())
     box.setColor.assert_called_once_with(hou.ui.selectColor.return_value)
+
+
+def test_palette_color_after_black(hou, tmp_path, monkeypatch):
+    from hotbox.common import layout
+
+    palette = tmp_path / "opColorPalette.def"
+    palette.write_text("3\n0 0 0\n0.188 0.188 0.188\n1 0 0\n", encoding="utf-8")
+    monkeypatch.setattr(hou, "findFile", lambda name: palette.as_posix(), raising=False)
+    monkeypatch.setattr(hou, "Color", lambda *rgb: rgb, raising=False)
+    assert layout.boxColor() == (0.188, 0.188, 0.188)
+    assert layout.paletteColors("0 0 0 255 51 0") == [(0, 0, 0), (1.0, 0.2, 0)]
+
+    monkeypatch.setattr(hou, "findFile", lambda name: (_ for _ in ()).throw(hou.OperationFailed()), raising=False)
+    assert layout.boxColor() == layout.BOX_GREY
+
+
+def test_sticky_note_is_a_white_label(hou, monkeypatch):
+    from hotbox.common import nodes
+
+    monkeypatch.setattr(hou, "Color", lambda *rgb: rgb, raising=False)
+    network = MagicMock()
+    pane = MagicMock()
+    pane.pwd.return_value = network
+    note = nodes.addStickyNote([], pane)
+    note.setDrawBackground.assert_called_once_with(False)
+    note.setTextColor.assert_called_once_with((1.0, 1.0, 1.0))
+    note.setTextSize.assert_called_once_with(nodes.NOTE_TEXT_SIZE)

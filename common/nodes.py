@@ -309,15 +309,23 @@ def noteHeader() -> str:
     return f"{getpass.getuser()}  {datetime.datetime.now():%Y-%m-%d %H:%M}"
 
 
+NOTE_TEXT_SIZE = 0.5  # font height, network units: about the Network Editor's 'Large'
+NOTE_TEXT_COLOR = (1.0, 1.0, 1.0)
+
+
 def addStickyNote(selected, pane=None):
-    """A note signed with the user and date: at the cursor, or right of the selected node in its color"""
+    """A note signed with the user and date: at the cursor, or right of the selected node in its color.
+    No background, white large text: a label in the network"""
     pane = pane or panes.networkPane()
     node = selected[0] if selected else None
     network = node.parent() if node is not None else (pane.pwd() if pane is not None else None)
     if network is None:
         return None
     note = network.createStickyNote()
-    note.setSize(hou.Vector2(4, 1.5))
+    note.setDrawBackground(False)
+    note.setTextColor(hou.Color(*NOTE_TEXT_COLOR))
+    note.setTextSize(NOTE_TEXT_SIZE)
+    note.setSize(hou.Vector2(8, 2.5))
     if node is not None:
         note.setText(f"{noteHeader()}\n{node.name()}: ")
         note.setColor(node.color())
