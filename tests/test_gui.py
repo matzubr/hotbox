@@ -641,10 +641,15 @@ def test_reload_picks_up_every_module(tmp_path):
 def test_row_labels_keep_the_font_size_and_are_cut(houdini):
     from hotbox.utils.widgets import ScriptButton
 
-    script = scripts.Script(Path("x.py"), "x.py", {"label": "Select Every Time-Dependent Node Here", "hotkey": "a"})
-    button = ScriptButton(script)
-    assert button.labelFont.pointSizeF() == ScriptButton.FONT
-    assert button.lines[0].endswith("…") and button.toolTip()
+    def button(label):
+        return ScriptButton(scripts.Script(Path("x.py"), "x.py", {"label": label, "hotkey": "2"}))
+
+    wrapped = button("Object Merge Absolute")  # too long for one line: two lines, the same font, not cut
+    assert wrapped.lines == ["Object Merge", "Absolute"] and wrapped.labelFont.pointSizeF() == ScriptButton.FONT
+    cut = button("Select Every Time-Dependent Node In The Whole Scene Right Now")
+    assert len(cut.lines) == 2 and cut.lines[-1].endswith("…") and cut.toolTip()
+    assert cut.labelFont.pointSizeF() == ScriptButton.FONT
+    cut.grab()  # paints both lines
 
 
 def test_group_stripe_is_the_group_color_and_lone_groups_are_framed(houdini, hou, tmp_path, monkeypatch):

@@ -568,7 +568,7 @@ def test_keycap_and_underlined_letter():
     assert widgets.underlineIndex("Bypass", "F5") is None
 
 
-def test_script_button_is_one_line_with_a_keycap(houdini, tmp_path):
+def test_script_button_row_with_a_keycap(houdini, tmp_path):
     from conftest import write_script
     from hotbox.utils import widgets
 
@@ -577,7 +577,7 @@ def test_script_button_is_one_line_with_a_keycap(houdini, tmp_path):
                  body="# Bakes the camera\n# to keyframes\nimport hou\n")
     script = scripts.scanLibrary([tmp_path / "lib"], "single")[0]
     button = widgets.ScriptButton(script)
-    assert len(button.lines) == 1 and button.label == script.label  # no "(f)" in the text
+    assert len(button.lines) <= 2 and button.label == script.label  # no "(f)" in the text
     assert button.keycapLabel() == "F" and button.tintIcon
     assert button.accentColor.name() == "#ff0000" and button.textColor.name() == widgets.NEUTRAL_TEXT
     assert "Bakes the camera to keyframes" in button.toolTip()

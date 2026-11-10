@@ -252,6 +252,7 @@ class Button(QPushButton):
     ROW_ICON = 22
     STRIPE = 4
     KEYCAP_HEIGHT = 20
+    ROW_LINES = 2  # a label that doesn't fit one line wraps on a second one
 
     def __init__(self, label: str = "ButtonText", buttonColor: str = "#222222", textColor: str = "#e8e8e8",
                  icon=None, parent=None, size: tuple[int, int] | None = None, fontSize: float = FONT_SIZE,
@@ -354,9 +355,10 @@ class Button(QPushButton):
         self.label = text
         self.setText(text)
         if self.style == "row":
-            # one font size for every script button: a long label is cut with '…', never made smaller
-            self.lines, self.labelFont = fitText(text, int(self.rowTextWidth()), max_lines=1, size=self.fontSize,
-                                                 shrink=False)
+            # one font size for every script button: a long label goes on two lines (cut with '…' only when
+            # two are not enough), never made smaller
+            self.lines, self.labelFont = fitText(text, int(self.rowTextWidth()), max_lines=self.ROW_LINES,
+                                                 size=self.fontSize, shrink=False)
         else:
             icon_width = self.ICON_SIZE + 6 if not self.icon().isNull() else 0
             self.lines, self.labelFont = fitText(text, self.buttonWidth - 24 - icon_width, size=self.fontSize)
@@ -498,18 +500,27 @@ class Button(QPushButton):
                 icon.paint(painter, int(x), int(top), self.ROW_ICON, self.ROW_ICON)
             x += self.ROW_ICON + 8
 
-        line = self.lines[0] if self.lines else ""
+        lines = self.lines or [""]
         painter.setFont(self.labelFont)
         painter.setPen(self.textColor)
         metrics = QFontMetrics(self.labelFont)
-        text_rect = QRectF(x, rect.top(), self.rowTextWidth() + 1, rect.height())
-        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, line)
-        index = underlineIndex(self.label, self.hotkey) if self.keycap is None else None
-        if index is not None and index < len(line) and not (line.endswith("…") and index >= len(line) - 1):
-            start = x + metrics.horizontalAdvance(line[:index])
-            width = metrics.horizontalAdvance(line[index])
-            baseline = center_y - metrics.height() / 2 + metrics.ascent() + 2
-            painter.fillRect(QRectF(start, baseline, width, 1.6), self.textColor)
+        line_height = metrics.height() - (2 if len(lines) > 1 else 0)  # two lines sit a bit closer
+        top = center_y - line_height * len(lines) / 2
+        # the hotkey letter: its index in the label, then the line it landed on (lines are the words joined by one
+        # space)
+        index = underlineIndex(" ".join(self.label.split()), self.hotkey) if self.keycap is None else None
+        offset = 0
+        for line in lines:
+            line_rect = QRectF(x, top, self.rowTextWidth() + 1, line_height)
+            painter.drawText(line_rect, Qt.AlignLeft | Qt.AlignVCenter, line)
+            local = None if index is None else index - offset
+            if local is not None and 0 <= local < len(line) and not (line.endswith("…") and local >= len(line) - 1):
+                start = x + metrics.horizontalAdvance(line[:local])
+                width = metrics.horizontalAdvance(line[local])
+                baseline = line_rect.center().y() - metrics.height() / 2 + metrics.ascent() + 2
+                painter.fillRect(QRectF(start, baseline, width, 1.6), self.textColor)
+            offset += len(line) + 1
+            top += line_height
 
         text = self.keycapLabel()
         if text:
