@@ -252,3 +252,42 @@ def openFile(path: Path) -> None:
         subprocess.Popen(["open", str(path)])
     else:
         subprocess.Popen(["xdg-open", str(path)])
+
+
+# --- collections ---------------------------------------------------------------------------------------------------
+
+def collectionName(text: str) -> str:
+    """A valid USD name: 'hero props!' -> 'hero_props'; a leading digit gets '_'"""
+    name = re.sub(r"\W+", "_", text.strip()).strip("_") or "collection"
+    return f"_{name}" if name[0].isdigit() else name
+
+
+def _parmLike(node, labels, name_parts):
+    """A parm by one of the labels (case-insensitive), else by a part of its name"""
+    wanted = {label.casefold() for label in labels}
+    parms = node.parms()
+    found = next((p for p in parms if p.parmTemplate().label().casefold() in wanted), None)
+    return found or next((p for p in parms if any(part in p.name() for part in name_parts)), None)
+
+
+def addCollection(node, name: str, pattern: str):
+    """A Collection LOP under node: the collection name and its include pattern. (the node, parms not found)"""
+    new = appendNode(node, "collection", f"COLLECTION_{name}")
+    missing = []
+    for value, labels, parts in ((name, ("Collection Name", "Name"), ("collectionname",)),
+                                 (pattern, ("Includes", "Include Pattern", "Include", PRIMS_PARM),
+                                  ("includepattern", "primpattern"))):
+        parm = _parmLike(new, labels, parts)
+        if parm is None:
+            missing.append(labels[0])
+        else:
+            parm.set(value)
+    return new, missing
+
+
+def expandPattern(node, pattern: str) -> list[str]:
+    """Prim paths a pattern picks on the node's stage (the same rule the LOP fields use)"""
+    try:
+        return [str(p) for p in hou.LopSelectionRule(pattern).expandedPaths(lopnode=node)]
+    except hou.OperationFailed:
+        return []

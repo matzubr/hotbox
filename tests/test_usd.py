@@ -76,3 +76,34 @@ def test_variant_choices_current_first_with_parents(hou):
     leaf = prim("/tree/leaf", {}, parent=asset)
 
     assert usd.variantChoices(leaf) == [("/tree", "lod", "high"), ("/tree", "lod", "low")]
+
+
+def test_collection_names_are_usd_names(hou):
+    from hotbox.common import usd
+
+    assert usd.collectionName(" hero props! ") == "hero_props"
+    assert usd.collectionName("3d") == "_3d"
+    assert usd.collectionName("***") == "collection"
+
+
+def test_add_collection_sets_name_and_includes_by_label(hou):
+    from hotbox.common import usd
+
+    def parm(name, label):
+        p = MagicMock()
+        p.name.return_value = name
+        p.parmTemplate().label.return_value = label
+        return p
+
+    name_parm, include_parm = parm("collectionname1", "Collection Name"), parm("includepattern1", "Includes")
+    new = MagicMock()
+    new.parms.return_value = [parm("primpath", "Primitive Path"), name_parm, include_parm]
+    node = MagicMock()
+    node.createOutputNode.return_value = new
+
+    created, missing = usd.addCollection(node, "props", "/geo/a /geo/b")
+
+    assert created is new and missing == []
+    node.createOutputNode.assert_called_with("collection", "COLLECTION_props")
+    name_parm.set.assert_called_with("props")
+    include_parm.set.assert_called_with("/geo/a /geo/b")
