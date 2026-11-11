@@ -64,8 +64,8 @@ def test_root_group_joins_the_context_group():
 
     in_context, root = scripts.scriptsForContext(library, "Sop")
 
-    assert [s.relpath for s in in_context] == ["Sop/a.py", "b.py"]  # one "Network" frame, not two
-    assert [s.relpath for s in root] == ["c.py"]
+    assert in_context == []
+    assert [s.relpath for s in root] == ["b.py", "c.py", "Sop/a.py"]  # one "Network" frame, where it always is
 
 
 def test_duplicate_hotkeys():

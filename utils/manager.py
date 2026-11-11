@@ -127,13 +127,17 @@ def swatchRow(swatch) -> QWidget:
     return row
 
 
+LABEL_WIDTH, LABEL_GAP = 78, 10
+FIELD_INDENT = LABEL_WIDTH + LABEL_GAP  # left edge of the fields in a form
+
+
 def formGrid(rows) -> QGridLayout:
     """Label | field rows"""
     form = QGridLayout()
     form.setContentsMargins(0, 0, 0, 0)
-    form.setHorizontalSpacing(10)
+    form.setHorizontalSpacing(LABEL_GAP)
     form.setVerticalSpacing(6)
-    form.setColumnMinimumWidth(0, 78)
+    form.setColumnMinimumWidth(0, LABEL_WIDTH)
     for row, (text, widget) in enumerate(rows):
         label = QLabel(text)
         label.setFont(buttonFont(10))
@@ -354,7 +358,10 @@ class ScriptManager(RoundedWindow, QWidget):
         preview_caption = QLabel("Preview")
         preview_caption.setFont(buttonFont(10))
         preview_caption.setStyleSheet("color:#8a8a8a;")
-        preview_row = HLayout([self.preview], align=Qt.AlignHCenter)
+        preview_row = HLayout([self.preview], align=Qt.AlignLeft)
+        indent = FIELD_INDENT
+        preview_row.setContentsMargins(indent, 0, 0, 0)
+        preview_caption.setContentsMargins(indent, 0, 0, 0)
         actions = HLayout([self.code_button, self.open_button, self.save_button], align=Qt.AlignRight)
         editor = panel(form, self.advanced_button, self.advanced, self.warning_label, 1, preview_caption,
                        preview_row, actions, title="Button")

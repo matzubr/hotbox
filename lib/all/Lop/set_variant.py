@@ -1,6 +1,6 @@
 #label:Set Variant
 #group:Solaris
-#textcolor:#d8b4fe
+#textcolor:#5eead4
 #hotkey:v
 #icon:variant.svg
 

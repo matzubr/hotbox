@@ -305,12 +305,13 @@ def scriptsForContext(scripts: list[Script], context: str) -> tuple[list[Script]
     """(scripts of the context folder, scripts of the root folder).
 
     Deeper folders (e.g. Lop/Instances) are not shown: they never match a context.
-    A root script of a #group the context also has joins the context one: one frame, one caption.
+    A context script of a #group the root also has joins the root one: one frame, one caption, and the group
+    stays where it always stands.
     """
     in_context = [s for s in scripts if context and s.context == context]
     root = [s for s in scripts if s.context == ""]
-    shared = {s.group for s in in_context if s.group}
-    return in_context + [s for s in root if s.group in shared], [s for s in root if s.group not in shared]
+    shared = {s.group for s in root if s.group}
+    return [s for s in in_context if s.group not in shared], root + [s for s in in_context if s.group in shared]
 
 
 def duplicateHotkeys(scripts: list[Script]) -> dict[str, list[str]]:

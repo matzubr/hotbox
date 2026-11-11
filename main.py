@@ -305,6 +305,8 @@ class HotBox(QWidget):
         else:
             found = f"Find: {text}_" if match is not None else f"No match: {text}_"
             self.central_button.updateText(found if text else "Type to find…")
+        searching = text is not None
+        self.central_button.updateColors(self.central_button.COLOR, "#f0f0f0" if searching else self.central_button.TEXT)
 
     def openHotboxFolder(self):
         """The first lib folder: your own one when HOTBOX_PATH is set, else the tool folder"""

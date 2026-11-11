@@ -1,8 +1,8 @@
-#label:Picked to Node
+#label:Picked Prims to…
 #group:Solaris
-#textcolor:#d8b4fe
+#textcolor:#5eead4
 #hotkey:z
-#icon:prune.svg
+#icon:prim-pick.svg
 
 # The prims picked in the viewer go into the Primitives field of a new node under the displayed one:
 # Prune, Configure Primitive, Edit Properties, Edit (transform) or Collection

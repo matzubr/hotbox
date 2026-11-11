@@ -1,6 +1,6 @@
 #label:Show as USDA
 #group:Solaris
-#textcolor:#d8b4fe
+#textcolor:#5eead4
 #hotkey:y
 #icon:file-code.svg
 

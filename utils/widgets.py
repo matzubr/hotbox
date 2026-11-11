@@ -387,13 +387,13 @@ class Button(QPushButton):
         text = self.keycapLabel()
         if not text:
             return 0.0
-        return max(float(self.KEYCAP_HEIGHT), QFontMetrics(keycapFont()).horizontalAdvance(text) + 10.0)
+        return max(float(self.KEYCAP_HEIGHT), QFontMetrics(keycapFont()).horizontalAdvance(text) + 8.0)
 
     def rowTextWidth(self) -> float:
         """Room for the text of a row button: between the icon and the keycap"""
         left = self.ROW_PAD + self.STRIPE + (self.ROW_ICON + 8 if not self.icon().isNull() else 0)
         keycap = self.keycapWidth()
-        return self.buttonWidth - left - self.ROW_PAD - (keycap + 8 if keycap else 0)
+        return self.buttonWidth - left - self.ROW_PAD - (keycap + 6 if keycap else 0)
 
     def updateColors(self, buttonColor="#222222", textColor="#e8e8e8"):
         self.baseColor = QColor(buttonColor)
