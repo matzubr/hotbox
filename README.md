@@ -78,7 +78,7 @@ everyone with `HOTBOX_PACKAGES = "studio-name"`.
 
 | Where | Buttons |
 |---|---|
-| **Solaris**, nothing selected | Fetch · SOP Import with Karma velocity blur · Material Library · Jump to Material · Material Report · Set Variant · Prims to Node… · Stage Files (every layer, reference and texture; missing ones first) · Show as USDA · Prim Paths ([DionysUSD](https://github.com/matzubr/DionysUSD)) |
+| **Solaris**, nothing selected | Fetch · SOP Import with Karma velocity blur · Material Library · Jump to Material · Material Report · Set Variant · Prims to Node… · Stage Files (every layer, reference and texture; missing ones first) · Show as USDA · Matte & Phantom (Assign Material → Prune → Karma matte → Karma phantom) · Prim Paths ([DionysUSD](https://github.com/matzubr/DionysUSD)) |
 | SOPs, nulls, caches | To Solaris · Volume to Solaris · Cache Network · Frame Range · Version Up · Open Folder · Object Merge |
 | any node | Create Null / Wrangle / Vop · Network Box · Sticky Note · Snap to Grid · Color by Type · Copy Path · Convert to `$JOB` / `$FILM` · Select Same / Modified |
 | wrangles, OpenCL, Python | Snippets ([mnemo](https://github.com/matzubr/mnemo)) |

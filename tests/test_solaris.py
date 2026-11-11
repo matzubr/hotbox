@@ -182,3 +182,46 @@ def test_volume_reads_the_cache_over_its_frame_range(hou, lopnet, monkeypatch):
     volume_parms["primpath"].set.assert_called_once_with("/vol/smoke")
     assert picked == ["Sample Frame Range"]
     frame_tuple.set.assert_called_once_with((1001, 1100, 1))
+
+
+def test_matte_and_phantom_karma_properties(hou):
+    from hotbox.common import solaris
+
+    holdout = _menuParm("xn__primvarskarmaobjectholdoutmode_jcbfg", ["No Holdout", "Matte", "Background"],
+                        ["none", "matte", "background"])
+    holdout_control = _menuParm("xn__primvarskarmaobjectholdoutmode_control_9kbfg", [], [])
+    visibility = _menuParm("xn__primvarskarmaobjectrendervisibility_0fbfg", [], [])  # a plain string
+    visibility_control = _menuParm("xn__primvarskarmaobjectrendervisibility_control_jmbfg", [], [])
+    node = MagicMock()
+    node.parms.return_value = [holdout, holdout_control, visibility, visibility_control]
+
+    assert solaris.setMatte(node) and solaris.setPhantom(node)
+    holdout.set.assert_called_with("matte")
+    visibility.set.assert_called_with("-primary")
+    holdout_control.set.assert_called_with("set")
+    visibility_control.set.assert_called_with("set")
+
+
+def test_holdout_chain_order(hou, monkeypatch):
+    from hotbox.common import solaris
+
+    monkeypatch.setattr(hou, "Color", lambda rgb: rgb, raising=False)
+    monkeypatch.setattr(solaris, "setMatte", lambda node: True)
+    monkeypatch.setattr(solaris, "setPhantom", lambda node: False)
+    made = []
+
+    def output(self_type, name):
+        child = MagicMock()
+        child.name.return_value = name
+        child.createOutputNode.side_effect = output
+        made.append((self_type, name))
+        return child
+
+    start = MagicMock()
+    start.createOutputNode.side_effect = output
+    created, missing = solaris.holdoutChain(start)
+
+    assert made == [("assignmaterial", "SET_MATERIAL"), ("prune", "PRUNE"),
+                    ("rendergeometrysettings", "MATTE"), ("rendergeometrysettings", "PHANTOM")]
+    assert missing == ["PHANTOM: Render Visibility"]
+    created[-1].setDisplayFlag.assert_called_with(True)

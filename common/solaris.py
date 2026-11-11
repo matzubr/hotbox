@@ -92,6 +92,63 @@ def setVelocityBlur(node) -> list[str]:
     return missing
 
 
+# Karma Holdout Mode (primvars:karma:object:holdoutmode: none / matte / background) and Render Visibility
+# (primvars:karma:object:rendervisibility: '*', '-primary'...): matte = a holdout, phantom = not seen by the camera
+# but in reflections, shadows, GI
+MATTE, PHANTOM = "matte", "phantom"
+PHANTOM_VISIBILITY = "-primary"
+
+
+def setKarmaProperty(node, key: str, label: str, fallback, token: str | None = None) -> bool:
+    """A Karma object property on a Render Geometry Settings: 'Set or Create' and the menu entry
+    (by label, else fallback(lowercased label), else the token for a string parm)"""
+    value, control = _blurParms(node, key)
+    if value is None:
+        return False
+    if control is not None:
+        control.set(SET_OR_CREATE)
+    if _pickMenu(value, label, fallback):
+        return True
+    if token is not None and value.parmTemplate().type().name() == "String":
+        value.set(token)
+        return True
+    return False
+
+
+def setMatte(node) -> bool:
+    return setKarmaProperty(node, "holdoutmode", "Matte", lambda text: "matte" in text, token="matte")
+
+
+def setPhantom(node) -> bool:
+    return setKarmaProperty(node, "rendervisibility", "Phantom",
+                            lambda text: "phantom" in text or "invisible to camera" in text, token=PHANTOM_VISIBILITY)
+
+
+CHAIN = (("assignmaterial", "SET_MATERIAL", None), ("prune", "PRUNE", None),
+         ("rendergeometrysettings", "MATTE", MATTE), ("rendergeometrysettings", "PHANTOM", PHANTOM))
+CHAIN_COLORS = {MATTE: (0.1, 0.1, 0.1), PHANTOM: (0.6, 0.6, 0.65)}
+
+
+def holdoutChain(node) -> tuple[list, list[str]]:
+    """Assign Material -> Prune -> Render Geometry Settings (matte) -> Render Geometry Settings (phantom) under
+    node, prim patterns empty to fill in. (the new nodes, what could not be set)"""
+    created, missing = [], []
+    current = node
+    for node_type, name, role in CHAIN:
+        current = current.createOutputNode(node_type, name)
+        current.moveToGoodPosition()
+        created.append(current)
+        if role == MATTE and not setMatte(current):
+            missing.append(f"{current.name()}: Holdout Mode")
+        elif role == PHANTOM and not setPhantom(current):
+            missing.append(f"{current.name()}: Render Visibility")
+        if role:
+            current.setColor(hou.Color(CHAIN_COLORS[role]))
+    current.setDisplayFlag(True)
+    created[0].setSelected(True, clear_all_selected=True)
+    return created, missing
+
+
 def addRenderGeometrySettings(sop_import, name: str | None = None):
     """Render Geometry Settings after the SOP Import: velocity blur on its prims.
     The prim pattern references the import's path prefix: rename the prims there, the settings follow."""
