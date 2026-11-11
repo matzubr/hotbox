@@ -42,7 +42,7 @@ _icon_folders: list[Path] = [ICONS_DIR]
 # Static ExtraBold cut: a variable font may render with its thinnest weight in Houdini's Qt
 FONT_FILE = PACKAGE_DIR / "fonts" / "Nunito-ExtraBold.ttf"
 FONT_FAMILY = "Nunito"
-FONT_SIZE = 14  # points
+FONT_SIZE = 14  # points at 96 dpi, set as pixels: see pixelFont
 CLOSE_KEYS = (int(Qt.Key_Escape), int(Qt.Key_QuoteLeft))  # Esc and `
 WHITE = QColor("#ffffff")
 NEUTRAL_TEXT = "#e8e8e8"  # script buttons: text is neutral, the script color goes to the icon and the side stripe
@@ -60,10 +60,16 @@ def loadFont() -> None:
         print(f"HotBox: can't load {FONT_FILE.as_posix()}, using the system font")
 
 
+def pixelFont(font: QFont, size: float) -> QFont:
+    """The size in points as pixels at 96 dpi. Buttons are drawn in pixels; a font in points grows with the
+    screen's dpi (Windows at 125-150 %) and the text would no longer fit the buttons."""
+    font.setPixelSize(max(1, round(size * 96 / 72)))
+    return font
+
+
 def buttonFont(size: float = FONT_SIZE) -> QFont:
     loadFont()
-    font = QFont(FONT_FAMILY)
-    font.setPointSizeF(size)
+    font = pixelFont(QFont(FONT_FAMILY), size)
     font.setWeight(QFont.ExtraBold)
     return font
 
@@ -198,8 +204,7 @@ def underlineIndex(label: str, hotkey: str | None) -> int | None:
 
 
 def keycapFont(size: float = 10.5) -> QFont:
-    font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-    font.setPointSizeF(size)
+    font = pixelFont(QFontDatabase.systemFont(QFontDatabase.FixedFont), size)
     font.setBold(True)
     return font
 

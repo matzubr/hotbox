@@ -510,10 +510,11 @@ def test_long_labels_fit_the_button(houdini, label):
 
 
 def test_short_label_keeps_the_full_font(houdini):
+    from hotbox.utils import widgets
     from hotbox.utils.widgets import FONT_SIZE, Button
 
     button = Button("Sop")
-    assert button.lines == ["Sop"] and button.labelFont.pointSizeF() == FONT_SIZE
+    assert button.lines == ["Sop"] and button.labelFont.pixelSize() == widgets.buttonFont(FONT_SIZE).pixelSize()
 
 
 def test_buttons_grow_in_from_the_cursor(houdini, hou, library, monkeypatch, qapp):
@@ -639,16 +640,20 @@ def test_reload_picks_up_every_module(tmp_path):
 # --- second UI pass: fixed font, group stripes, Script Manager states ---------------------------------------------
 
 def test_row_labels_keep_the_font_size_and_are_cut(houdini):
+    from hotbox.utils import widgets
     from hotbox.utils.widgets import ScriptButton
 
     def button(label):
         return ScriptButton(scripts.Script(Path("x.py"), "x.py", {"label": label, "hotkey": "2"}))
 
+    def same(font):
+        return font.pixelSize() == widgets.buttonFont(ScriptButton.FONT).pixelSize()
+
     wrapped = button("Object Merge Absolute")  # too long for one line: two lines, the same font, not cut
-    assert wrapped.lines == ["Object Merge", "Absolute"] and wrapped.labelFont.pointSizeF() == ScriptButton.FONT
+    assert wrapped.lines == ["Object Merge", "Absolute"] and same(wrapped.labelFont)
     cut = button("Select Every Time-Dependent Node In The Whole Scene Right Now")
     assert len(cut.lines) == 2 and cut.lines[-1].endswith("…") and cut.toolTip()
-    assert cut.labelFont.pointSizeF() == ScriptButton.FONT
+    assert same(cut.labelFont)
     cut.grab()  # paints both lines
 
 
@@ -757,3 +762,12 @@ def test_manager_list_search_duplicate_delete(houdini, library, monkeypatch):
     assert manager.deleteScript()
     assert "multiple/flip.py" in asked[-1]  # its #ref breaks
     manager.close()
+
+
+def test_button_fonts_are_pixels_not_points(houdini):
+    """Windows at 125-150 % raises the dpi: a font in points would outgrow the buttons drawn in pixels"""
+    from hotbox.utils import widgets
+
+    for font in (widgets.buttonFont(13), widgets.keycapFont()):
+        assert font.pixelSize() > 0 and font.pointSizeF() < 0
+    assert widgets.buttonFont(13).pixelSize() == 17
