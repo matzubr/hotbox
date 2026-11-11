@@ -443,10 +443,10 @@ def test_code_panel_slides_out_and_saves_code(houdini, library):
     QTest.qWait(manager_module.CODE_SLIDE_MS + 100)
     assert manager.code_panel.isVisible() and manager.code_panel.width() == manager_module.CODE_WIDTH
     assert manager.width() > width
-    assert manager.code_edit.toPlainText() == "\nimport hou\nprint('flip')"
+    assert manager.code_edit.toPlainText() == "import hou\nprint('flip')"  # no blank lines on top
     assert "all/flipbook.py" in manager.code_title.text()
 
-    manager.code_edit.setPlainText("\nimport hou\nprint('flop')")
+    manager.code_edit.setPlainText("import hou\nprint('flop')")
     assert "●" in manager.code_title.text()
     manager.hotkey_lineedit.setText("g")
     manager.save()

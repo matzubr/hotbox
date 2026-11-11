@@ -119,7 +119,7 @@ HOTBOX_PATH = "$HOME/houdini_scripts/hotbox_lib;//server/pipeline/hotbox_lib"
 Each folder has the same layout as `lib/` (`all/`, `multiple/`, `single/`), plus `icons/` for your icon files. Folders are searched in order, the
 built-in `lib/` last: a script hides the one with the same path in later folders (your `single/create_null.py`
 replaces the built-in one), and `#ref` targets are looked up the same way. The Script Manager marks scripts from
-these folders with the folder name; "Open Folder" opens the first one. Separator: `;` (`:` works too on
+these folders with the folder name; "HotBox Folder" opens the first one. Separator: `;` (`:` works too on
 Linux/macOS).
 
 The package switches are saved per user in `$HOUDINI_USER_PREF_DIR/hotbox/settings.json`.

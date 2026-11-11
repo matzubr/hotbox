@@ -58,6 +58,16 @@ def test_context_and_root_scripts():
     assert scripts.scriptsForContext(library, "")[0] == []
 
 
+def test_root_group_joins_the_context_group():
+    make = lambda rel, group: scripts.Script(Path(rel), rel, settings={"group": group})
+    library = [make("Sop/a.py", "Network"), make("b.py", "Network"), make("c.py", "Select")]
+
+    in_context, root = scripts.scriptsForContext(library, "Sop")
+
+    assert [s.relpath for s in in_context] == ["Sop/a.py", "b.py"]  # one "Network" frame, not two
+    assert [s.relpath for s in root] == ["c.py"]
+
+
 def test_duplicate_hotkeys():
     library = [scripts.Script(Path(r), r, {"hotkey": k}) for r, k in [("a.py", "f"), ("b.py", "F"), ("c.py", "g")]]
     assert scripts.duplicateHotkeys(library) == {"f": ["a.py", "b.py"]}

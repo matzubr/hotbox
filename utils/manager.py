@@ -105,7 +105,11 @@ def bodyStyle() -> str:
     QScrollBar:vertical {{ background: {c['grey-dark']}; width: 10px; border: none; margin: 0; }}
     QScrollBar::handle:vertical {{ background: #4a4a4a; border-radius: 4px; min-height: 20px; }}
     QScrollBar::handle:vertical:hover {{ background: {c['accent']}; }}
+    QScrollBar:horizontal {{ background: {c['grey-dark']}; height: 10px; border: none; margin: 0; }}
+    QScrollBar::handle:horizontal {{ background: #4a4a4a; border-radius: 4px; min-width: 20px; }}
+    QScrollBar::handle:horizontal:hover {{ background: {c['accent']}; }}
     QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     """
 
 
@@ -150,7 +154,9 @@ def panel(*widgets_or_layouts, title: str = "") -> QWidget:
         caption.setFont(buttonFont(11))
         layout.addWidget(caption)
     for item in widgets_or_layouts:
-        if isinstance(item, QWidget):
+        if isinstance(item, int):
+            layout.addStretch(item)  # a number: room that grows
+        elif isinstance(item, QWidget):
             layout.addWidget(item)
         else:
             layout.addLayout(item)
@@ -320,6 +326,8 @@ class ScriptManager(RoundedWindow, QWidget):
         self.preview.setToolTip("How the button looks in the hotbox")
         self.save_button = Button("Save", buttonColor=COLORS["accent"], textColor="#ffffff", size=ACTION_SIZE,
                                   fontSize=12)
+        self.save_button.DISABLED_OPACITY = 1.0  # greyed by its colors instead
+        self.save_button.setToolTip("Save the button and the code into the file (Ctrl+S)")
         self.open_button = Button("Open file", buttonColor="#4a4a4a", size=ACTION_SIZE, fontSize=12)
         self.code_button = Button("Code ›", buttonColor="#4a4a4a", size=(100, 36), fontSize=12)
         self.code_button.setToolTip("Edit the code here")
@@ -343,10 +351,13 @@ class ScriptManager(RoundedWindow, QWidget):
         self.advanced.setLayout(formGrid([("Ref", self.ref_field), ("Package", self.package_field)]))
         self.setAdvancedOpen(False)
 
+        preview_caption = QLabel("Preview")
+        preview_caption.setFont(buttonFont(10))
+        preview_caption.setStyleSheet("color:#8a8a8a;")
         preview_row = HLayout([self.preview], align=Qt.AlignHCenter)
-        actions = HLayout([self.code_button, self.save_button, self.open_button], align=Qt.AlignRight)
-        editor = panel(form, self.advanced_button, self.advanced, self.warning_label, preview_row, actions,
-                       title="Button")
+        actions = HLayout([self.code_button, self.open_button, self.save_button], align=Qt.AlignRight)
+        editor = panel(form, self.advanced_button, self.advanced, self.warning_label, 1, preview_caption,
+                       preview_row, actions, title="Button")
         file_row = HLayout([QLabel("File"), self.file_lineedit], align=None)
 
         self.code_title = QLabel("Code")
@@ -655,7 +666,7 @@ class ScriptManager(RoundedWindow, QWidget):
             self._loading = False
         stem = script.path.stem if script else ""
         self.name_lineedit.setPlaceholderText(inherited.get("label") or stem)
-        self.group_lineedit.setPlaceholderText(inherited.get("group") or "buttons of one group stand together")
+        self.group_lineedit.setPlaceholderText(inherited.get("group") or "e.g. Network")
         self.package_lineedit.setPlaceholderText(inherited.get("package") or "shown only when the package is on")
         self.icon_lineedit.setPlaceholderText(inherited.get("icon") or "dino.svg / SOP_null")
         self.hotkey_lineedit.setPlaceholderText(keycapText(inherited.get("hotkey")) or "click, then press a key")
@@ -746,6 +757,7 @@ class ScriptManager(RoundedWindow, QWidget):
         """A dot in the title and Save active only when there is something to save"""
         dirty = self.isDirty()
         self.save_button.setEnabled(dirty)
+        self.save_button.updateColors(*((COLORS["accent"], "#ffffff") if dirty else ("#3a3a3a", "#7a7a7a")))
         self.title_bar.title.setText("Script Manager" + ("  ●" if dirty else ""))
 
     # --- code panel ---------------------------------------------------------------------------------------------
@@ -756,7 +768,10 @@ class ScriptManager(RoundedWindow, QWidget):
         path = (script.runPath or None) if script else None
         self._codePath = path
         self.code_edit.blockSignals(True)
-        self.code_edit.setPlainText(script_lib.readBody(path) if path else "")
+        body = script_lib.readBody(path) if path else ""
+        code = body.lstrip("\n")
+        self._codeLead = body[:len(body) - len(code)]  # blank lines after the header: kept in the file
+        self.code_edit.setPlainText(code)
         self.code_edit.setExtraSelections([])
         self.code_edit.blockSignals(False)
         self.code_edit.setReadOnly(path is None)
@@ -803,6 +818,8 @@ class ScriptManager(RoundedWindow, QWidget):
     def writeChanges(self, script, header: bool = True):
         """The header fields (header=True) and the edited code into the files"""
         code = self.code_edit.toPlainText() if self._codeDirty and self._codePath else None
+        if code is not None:
+            code = getattr(self, "_codeLead", "") + code
         if code is not None and self._codePath == script.path:
             script_lib.writeHeader(script.path, self.editedSettings() if header else script.ownSettings, body=code)
         else:

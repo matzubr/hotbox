@@ -197,7 +197,7 @@ def underlineIndex(label: str, hotkey: str | None) -> int | None:
     return index if index >= 0 else None
 
 
-def keycapFont(size: float = 9.5) -> QFont:
+def keycapFont(size: float = 10.5) -> QFont:
     font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
     font.setPointSizeF(size)
     font.setBold(True)
@@ -251,7 +251,7 @@ class Button(QPushButton):
     ROW_PAD = 12
     ROW_ICON = 22
     STRIPE = 4
-    KEYCAP_HEIGHT = 20
+    KEYCAP_HEIGHT = 22
     ROW_LINES = 2  # a label that doesn't fit one line wraps on a second one
 
     def __init__(self, label: str = "ButtonText", buttonColor: str = "#222222", textColor: str = "#e8e8e8",
@@ -409,6 +409,8 @@ class Button(QPushButton):
         if dimmed:
             self.endHover()
         self.update()
+        if self.parentWidget() is not None:
+            self.parentWidget().update()  # a group frame fades when none of its buttons match
 
     def background(self) -> QColor:
         return mixColor(self.baseColor, WHITE, self.HOVER_WHITE * self.hover)
@@ -527,12 +529,12 @@ class Button(QPushButton):
             width = self.keycapWidth()
             cap = QRectF(rect.right() - self.ROW_PAD - width, center_y - self.KEYCAP_HEIGHT / 2, width,
                          self.KEYCAP_HEIGHT)
-            painter.setPen(QColor(255, 255, 255, 70))
-            painter.setBrush(QColor(0, 0, 0, 60))
-            painter.drawRoundedRect(cap.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+            painter.setPen(QColor(255, 255, 255, 40))
+            painter.setBrush(QColor(255, 255, 255, 26))
+            painter.drawRoundedRect(cap.adjusted(0.5, 0.5, -0.5, -0.5), 5, 5)
             painter.setBrush(Qt.NoBrush)
             painter.setFont(keycapFont())
-            painter.setPen(QColor(232, 232, 232, 210))
+            painter.setPen(QColor(240, 240, 240))
             painter.drawText(cap, Qt.AlignCenter, text)
 
     # --- animation ----------------------------------------------------------------------------------------------
@@ -781,6 +783,8 @@ def paintGroupFrame(painter: QPainter, frame: QRectF, name: str, buttons=()) -> 
     """Translucent rounded frame with a caption: #group blocks.
     While its buttons appear, the frame fades in with the first of them."""
     shown = max((min(1.0, max(0.0, b.appear)) * (1.0 - b.press) for b in buttons), default=1.0)
+    if buttons and all(b.dimmed for b in buttons):
+        shown *= Button.DIM_OPACITY  # search: nothing in the group matches
     if shown <= 0:
         return
     painter.save()

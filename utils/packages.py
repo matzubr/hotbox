@@ -113,8 +113,9 @@ class PackagesWindow(RoundedWindow, QWidget):
             empty.setObjectName("Hint")
             rows.addWidget(empty)
         path = settings.settingsPath()
-        hint = QLabel(f"Saved for you only: {path.parent.name}/{path.name} in your Houdini prefs.\n"
-                      f"Packages listed in ${settings.PACKAGES_ENV} are on by default.")
+        hint = QLabel(f"Off hides the package's buttons from the HotBox.\n"
+                      f"Saved for you only ({path.parent.name}/{path.name} in your Houdini prefs);\n"
+                      f"packages listed in ${settings.PACKAGES_ENV} are on by default.")
         hint.setObjectName("Hint")
         rows.addWidget(hint)
 

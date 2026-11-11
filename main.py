@@ -151,7 +151,7 @@ class HotBox(QWidget):
         self.keybindings = self.scripts_buttons.keybindings()
         self.script_buttons = self.scripts_buttons.buttons
 
-        self.open_hotbox_button = widgets.SecondaryButton("Open Folder", "folder.svg")
+        self.open_hotbox_button = widgets.SecondaryButton("HotBox Folder", "folder.svg")
         self.open_hotbox_button.setToolTip("The HotBox lib folder (yours with HOTBOX_PATH)")
         self.central_button = widgets.SecondaryButton(contextLabel(self.context), keycap="Esc")
         self.central_button.setToolTip("Where the hotbox opened: its scripts are the ones for this.\n"
@@ -303,7 +303,8 @@ class HotBox(QWidget):
         if text is None:
             self.central_button.updateText(contextLabel(self.context))
         else:
-            self.central_button.updateText(f"Find: {text}_" if text else "Type to find…")
+            found = f"Find: {text}_" if match is not None else f"No match: {text}_"
+            self.central_button.updateText(found if text else "Type to find…")
 
     def openHotboxFolder(self):
         """The first lib folder: your own one when HOTBOX_PATH is set, else the tool folder"""
