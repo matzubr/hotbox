@@ -363,8 +363,8 @@ class ScriptManager(RoundedWindow, QWidget):
         preview_row.setContentsMargins(indent, 0, 0, 0)
         preview_caption.setContentsMargins(indent, 0, 0, 0)
         actions = HLayout([self.code_button, self.open_button, self.save_button], align=Qt.AlignRight)
-        editor = panel(form, self.advanced_button, self.advanced, self.warning_label, 1, preview_caption,
-                       preview_row, actions, title="Button")
+        editor = panel(form, self.advanced_button, self.advanced, self.warning_label, preview_caption,
+                       preview_row, actions, 1, title="Button")
         file_row = HLayout([QLabel("File"), self.file_lineedit], align=None)
 
         self.code_title = QLabel("Code")
