@@ -86,6 +86,14 @@ def main():
     app.processEvents()
     onBackground(box).save((DOCS / "menu.png").as_posix())
 
+    utility.detectContext = lambda: utility.Context("all", "Lop", "Lop", None)  # Solaris, nothing selected
+    lop_box = hotbox_main.HotBox(lib_dir=Path("lib"))
+    lop_box.finishAppear()
+    app.processEvents()
+    onBackground(lop_box).save((DOCS / "menu_lop.png").as_posix())
+    lop_box.close()
+    utility.detectContext = lambda: utility.Context("single", "cam", "cam", None)
+
     # Animation: the buttons grow in from the cursor, then hover one button and move to another
     frames = []
 
