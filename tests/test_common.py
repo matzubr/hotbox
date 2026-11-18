@@ -391,3 +391,39 @@ def test_sticky_note_is_a_white_label(hou, monkeypatch):
     note.setDrawBackground.assert_called_once_with(False)
     note.setTextColor.assert_called_once_with((1.0, 1.0, 1.0))
     note.setTextSize.assert_called_once_with(nodes.NOTE_TEXT_SIZE)
+
+
+def test_reload_presses_file_nodes_and_typed_caches(hou, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from hotbox.common import paths
+
+    button = MagicMock()
+    monkeypatch.setattr(hou, "parmTemplateType", MagicMock(Button=button), raising=False)
+
+    def node(path):
+        n = MagicMock()
+        n.path.return_value = path
+        n.parm.return_value.parmTemplate.return_value.type.return_value = button
+        return n
+
+    file_node, s_cache, other = node("/obj/geo/file1"), node("/obj/geo/s_cache1"), node("/obj/geo/box1")
+    parm = MagicMock()
+    parm.node.return_value = file_node
+    monkeypatch.setattr(paths, "sceneFileParms", lambda: [parm, parm])
+
+    def nodeType(components, instances):
+        t = MagicMock()
+        t.nameComponents.return_value = components
+        t.instances.return_value = instances
+        return t
+
+    category = MagicMock()
+    category.nodeTypes.return_value = {"s_cache::11.0": nodeType(("", "", "s_cache", "11.0"), [s_cache]),
+                                       "box": nodeType(("", "", "box", ""), [other])}
+    monkeypatch.setattr(hou, "nodeTypeCategories", lambda: {"Sop": category}, raising=False)
+
+    assert paths.reloadFileNodes() == [file_node, s_cache]
+    s_cache.parm.assert_called_with("reload")
+    s_cache.parm.return_value.pressButton.assert_called_once()
+    other.parm.assert_not_called()

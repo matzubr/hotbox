@@ -163,11 +163,39 @@ def missingFiles() -> list[tuple]:
 
 
 RELOAD_BUTTONS = ("reload", "reloadgeo", "reloadfile")
+# Cache nodes found by type, not by a file parameter (their path is an output, hidden or built from parts):
+# type name without the version (s_cache::11.0 -> s_cache) -> their reload button
+RELOAD_TYPES = {"s_cache": "reload"}
+
+
+def _typeKey(node_type) -> str:
+    _scope, namespace, name, _version = node_type.nameComponents()
+    return f"{namespace}::{name}" if namespace else name
+
+
+def typedReloadNodes(types=None) -> list[tuple]:
+    """[(node, reload button name)] of every node of a RELOAD_TYPES type, any version"""
+    types = RELOAD_TYPES if types is None else types
+    found = []
+    for category in hou.nodeTypeCategories().values():
+        for node_type in category.nodeTypes().values():
+            name = types.get(_typeKey(node_type))
+            if name:
+                found += [(node, name) for node in node_type.instances()]
+    return found
+
+
+def _press(node, name: str) -> bool:
+    button = node.parm(name)
+    if button is None or button.parmTemplate().type() != hou.parmTemplateType.Button:
+        return False
+    button.pressButton()
+    return True
 
 
 def reloadFileNodes() -> list:
-    """Press the Reload button of every node that reads files (File, Alembic, File Cache, Sublayer...).
-    Returns the reloaded nodes."""
+    """Press the Reload button of every node that reads files (File, Alembic, File Cache, Sublayer...) and of the
+    RELOAD_TYPES nodes. Returns the reloaded nodes."""
     try:
         import _alembic_hom_extensions as alembic
         alembic.alembicClearArchiveCache()  # files rewritten outside: drop the cached archives first
@@ -179,12 +207,13 @@ def reloadFileNodes() -> list:
         if node.path() in seen:
             continue
         seen.add(node.path())
-        for name in RELOAD_BUTTONS:
-            button = node.parm(name)
-            if button is not None and button.parmTemplate().type() == hou.parmTemplateType.Button:
-                button.pressButton()
-                reloaded.append(node)
-                break
+        if any(_press(node, name) for name in RELOAD_BUTTONS):
+            reloaded.append(node)
+    done = {node.path() for node in reloaded}
+    for node, name in typedReloadNodes():
+        if node.path() not in done and _press(node, name):
+            done.add(node.path())
+            reloaded.append(node)
     return reloaded
 
 
