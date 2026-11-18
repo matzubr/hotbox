@@ -558,7 +558,7 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     merge.inputs.return_value = fetches
     owner = MagicMock()
     owner.node.return_value = merge
-    exec(callback, {"hou": hou, "kwargs": {"node": owner}})
+    exec(callback, {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102 (the button callback as Houdini runs it)
     assert ran == ["/g/sim", "/g/mesh"], "each cache's own ROP, in the write order"
     container.setParmTemplateGroup.assert_called_once()
 
@@ -626,5 +626,5 @@ def test_one_selected_s_cache_shows_the_cache_buttons():
     """A studio cache HDA (s_cache::11.0): its type folder has the File Cache buttons that work on any cache"""
     library = scripts.scanLibrary([ROOT / "lib"], "single")
     in_context, _root = scripts.scriptsForContext(library, "s_cache")
-    assert {s.label for s in in_context} >= {"Cache Network", "Open Folder", "Frame Range"}
+    assert {s.label for s in in_context} >= {"Cache Network", "Open Folder", "Frame Range", "Version Up", "Volume to Solaris"}
     assert {s.group for s in in_context if s.label == "Cache Network"} == {"Cache"}

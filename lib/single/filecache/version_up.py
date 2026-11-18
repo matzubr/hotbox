@@ -10,7 +10,10 @@ import hou
 from hotbox.common import panes
 
 node = hou.selectedNodes()[0]
-version = node.parm("version")
+# File Cache: "version"; studio cache HDAs (s_cache) may name it otherwise: a number parameter labeled Version
+version = node.parm("version") or next(
+    (p for p in node.parms() if p.parmTemplate().label().strip().casefold() == "version"
+     and p.parmTemplate().type() == hou.parmTemplateType.Int), None)
 if version is None:
     panes.warn(f"{node.name()} has no Version parameter")
 else:

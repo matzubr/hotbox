@@ -42,6 +42,8 @@ def convertPaths(variable: str = "$JOB") -> dict:
     for node in nodes:
         for parm_name in fileParms(node):
             parm = node.parm(parm_name)
+            if hasExpression(parm):
+                continue  # computed (a cache HDA builds its path): rewriting would replace the expression
             raw = parm.rawValue()
             # Directory from the evaluated value, file name from the raw one (keeps $F4 etc.)
             directory = replacePrefix(posixpath.dirname(parm.eval().replace("\\", "/")), root, variable)
@@ -92,9 +94,55 @@ def _expandMultiparms(node, names: list[str]) -> list[str]:
     return result
 
 
+# Studio cache HDAs whose path is not a file reference parameter (built from parts, a plain string...):
+# type name without the version (s_cache::11.0 -> s_cache) -> the names of its path parameters; empty: every string
+# parameter whose value looks like a cache file (CACHE_SUFFIXES)
+CACHE_PATH_TYPES: dict[str, tuple[str, ...]] = {"s_cache": ()}
+CACHE_SUFFIXES = (".bgeo.sc", ".bgeo", ".bgeo.gz", ".bgeo.lzma", ".geo", ".vdb", ".abc", ".usd", ".usdc", ".usda",
+                  ".usdz", ".sim", ".simdata", ".obj", ".fbx", ".ply", ".bhclassic", ".hclassic", ".rs", ".ass")
+
+
+def looksLikeCacheFile(path: str) -> bool:
+    return path.lower().endswith(CACHE_SUFFIXES)
+
+
+def _cachePathParms(node, include_hidden: bool) -> list[str]:
+    """Path parameters of a CACHE_PATH_TYPES node: the listed names, else guessed from the values"""
+    try:
+        names = CACHE_PATH_TYPES.get(_typeKey(node.type()))
+    except (AttributeError, TypeError, ValueError, hou.OperationFailed):
+        return []
+    if names is None:
+        return []
+    if names:
+        return [name for name in names if node.parm(name) is not None]
+    found = []
+    for parm in node.parms():
+        template = parm.parmTemplate()
+        if template.type() != hou.parmTemplateType.String or (template.isHidden() and not include_hidden):
+            continue
+        try:
+            value = parm.evalAsString()
+        except hou.OperationFailed:
+            continue
+        if looksLikeCacheFile(value) and not value.startswith(NOT_FILES):
+            found.append(parm.name())
+    return found
+
+
 def fileParms(node, include_hidden: bool = False) -> list[str]:
-    """Names of the file reference parameters (visible ones by default), multiparm instances expanded"""
-    return _expandMultiparms(node, _fileTemplateNames(node, include_hidden))
+    """Names of the file reference parameters (visible ones by default), multiparm instances expanded;
+    for CACHE_PATH_TYPES nodes also their path parameters"""
+    names = _expandMultiparms(node, _fileTemplateNames(node, include_hidden))
+    return list(dict.fromkeys(names + _cachePathParms(node, include_hidden)))
+
+
+def hasExpression(parm) -> bool:
+    try:
+        parm.expression()
+    except hou.OperationFailed:
+        return False
+    return True
 
 
 NOT_FILES = ("op:", "opdef:", "oplib:", "temp:", "stage:")

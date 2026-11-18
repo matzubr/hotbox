@@ -29,6 +29,7 @@ def _file_node(hou, raw, evaluated, monkeypatch):
     parm.rawValue.return_value = raw
     parm.eval.return_value = evaluated
     parm.name.return_value = "file"
+    parm.expression.side_effect = hou.OperationFailed  # a plain value, no expression
     node = MagicMock()
     node.name.return_value = "cache"
     node.parmTemplateGroup().parmTemplates.return_value = [template]
@@ -427,3 +428,51 @@ def test_reload_presses_file_nodes_and_typed_caches(hou, monkeypatch):
     s_cache.parm.assert_called_with("reload")
     s_cache.parm.return_value.pressButton.assert_called_once()
     other.parm.assert_not_called()
+
+
+def _s_cache(hou, monkeypatch, parms):
+    """An s_cache::11.0 node with string parms {name: (value, hidden, expression or None)}"""
+    for name in ("parmTemplateType", "stringParmType"):
+        monkeypatch.setattr(hou, name, MagicMock(), raising=False)
+    node = MagicMock()
+    node.name.return_value = "s_cache1"
+    node.type.return_value.nameComponents.return_value = ("", "", "s_cache", "11.0")
+    node.parmTemplateGroup().parmTemplates.return_value = []  # no file reference parms
+    made = {}
+    for name, (value, hidden, expression) in parms.items():
+        parm = MagicMock()
+        parm.name.return_value = name
+        parm.parmTemplate.return_value.type.return_value = hou.parmTemplateType.String
+        parm.parmTemplate.return_value.isHidden.return_value = hidden
+        parm.evalAsString.return_value = parm.eval.return_value = value
+        parm.rawValue.return_value = expression or value
+        if expression:
+            parm.expression.return_value = expression
+        else:
+            parm.expression.side_effect = hou.OperationFailed
+        made[name] = parm
+    node.parms.return_value = list(made.values())
+    node.parm.side_effect = made.get
+    return node, made
+
+
+def test_s_cache_path_is_found_by_its_value(hou, monkeypatch):
+    node, parms = _s_cache(hou, monkeypatch, {
+        "basedir": ("/proj/shot/cache", False, None),
+        "outputpath": ("/proj/shot/cache/smoke/v003/smoke.$F4.vdb", False, 'chs("basedir") + "/smoke"'),
+        "cachefile": ("/proj/shot/cache/smoke.$F4.bgeo.sc", True, None),
+        "note": ("written on the farm", False, None)})
+    assert paths.fileParms(node) == ["outputpath"]
+    assert paths.fileParms(node, include_hidden=True) == ["outputpath", "cachefile"]
+    assert paths.mainFileParm(node) is parms["outputpath"]
+
+    monkeypatch.setattr(hou, "selectedNodes", lambda: [node], raising=False)
+    monkeypatch.setattr(hou, "text", MagicMock(expandString=lambda s: "/proj/shot"), raising=False)
+    assert paths.convertPaths("$JOB") == {}, "a computed path keeps its expression"
+    parms["outputpath"].set.assert_not_called()
+
+
+def test_listed_path_parms_win(hou, monkeypatch):
+    node, _parms = _s_cache(hou, monkeypatch, {"geo": ("/c/a.bgeo.sc", False, None), "out": ("/c/b.vdb", False, None)})
+    monkeypatch.setitem(paths.CACHE_PATH_TYPES, "s_cache", ("out",))
+    assert paths.fileParms(node) == ["out"]
