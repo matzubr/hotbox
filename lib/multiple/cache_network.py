@@ -5,7 +5,8 @@
 #icon:size.svg
 
 # A TOP or ROP network next to the selected cache nodes that writes them one after another
-# (upstream caches first): ROP network = Fetch per cache, TOP network = ROP Fetch per cache with Wait for All between.
+# (upstream caches first): TOP network = ROP Fetch per cache with Wait for All between; ROP network = Fetch per cache
+# into a Merge, written by the network's "Write All, Node by Node" button (a ROP's Render button goes frame by frame).
 # Each one runs the cache node's own ROP, so its path, version and frame range are used.
 import hou
 from hotbox.common import caches, panes
@@ -38,6 +39,8 @@ def main():
         panes.warn(str(e))
         return
     message = f"{network.path()}: {len(created)} cache(s)"
+    if choice == 1:
+        message += f", write with '{caches.WRITE_LABEL}' on it"
     if skipped:
         message += f", skipped (no ROP found, see CACHE_TYPES): {', '.join(n.name() for n in skipped)}"
     hou.ui.setStatusMessage(message, severity=hou.severityType.Warning if skipped else hou.severityType.Message)

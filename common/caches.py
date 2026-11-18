@@ -97,8 +97,57 @@ def _stack(nodes) -> None:
         node.setPosition(hou.Vector2(STACK_X, -1.5 * k))
 
 
+WRITE_BUTTON = "write_node_by_node"
+WRITE_LABEL = "Write All, Node by Node"
+
+
+def writeCallback(merge_name: str) -> str:
+    """Button callback: the ROP behind each Fetch of the merge, in input order, over its own frame range (like Save
+    to Disk on each cache). Plain hou, no hotbox: the button works in a scene opened without it.
+    Not the Merge itself: its Render button goes frame by frame (Houdini's -I), and dependencies may get the
+    downstream frame range instead of their own."""
+    return (f"for f in kwargs['node'].node('{merge_name}').inputs(): "
+            "f.node(f.evalParm('source')).render(method=hou.renderMethod.RopByRop)")
+
+
+def addWriteButton(network, merge) -> None:
+    """A button on top of the network's parameters that writes the caches node by node (writeCallback)"""
+    group = network.parmTemplateGroup()
+    button = hou.ButtonParmTemplate(
+        WRITE_BUTTON, WRITE_LABEL, script_callback=writeCallback(merge.name()),
+        script_callback_language=hou.scriptLanguage.Python,
+        help="Writes the caches one after another, each over its own frame range (Esc stops)")
+    entries = group.entries()
+    if entries:
+        group.insertBefore(entries[0], button)
+    else:
+        group.append(button)
+    network.setParmTemplateGroup(group)
+
+
+def _ropNetwork(caches, pairs, skipped) -> tuple:
+    """A Fetch per cache side by side into a Merge (inputs in the write order) and the node by node button"""
+    network = _container(caches, "ropnet", "write_caches")
+    created = []
+    for k, (cache, rop) in enumerate(pairs):
+        fetch = network.createNode("fetch", f"fetch_{cache.name()}")
+        _setPath(fetch, ("source",), ("Source",), rop.path())
+        fetch.setPosition(hou.Vector2(STACK_X + 3.0 * k, 0))
+        created.append(fetch)
+    merge = network.createNode("merge", "write_all")
+    for k, fetch in enumerate(created):
+        merge.setInput(k, fetch)
+    merge.setPosition(hou.Vector2(STACK_X + 1.5 * (len(created) - 1), -2))
+    merge.setComment(f"Write with '{WRITE_LABEL}' on {network.name()}:\nits Render button goes frame by frame")
+    merge.setGenericFlag(hou.nodeFlag.DisplayComment, True)
+    addWriteButton(network, merge)
+    merge.setCurrent(True, clear_all_selected=True)
+    network.setCurrent(True, clear_all_selected=True)
+    return network, created, skipped
+
+
 def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
-    """kind 'rop': a ROP network with a Fetch per cache, chained (each one waits for the one before).
+    """kind 'rop': a ROP network with a Fetch per cache into a Merge, written node by node by its button.
     kind 'top': a TOP network with a ROP Fetch per cache, Wait for All between them.
     The network goes next to the caches. Returns (network, [created nodes], [caches skipped, no ROP])."""
     pairs, skipped = [], []
@@ -112,17 +161,7 @@ def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
         raise ValueError("No cache ROP found in the selected nodes (see CACHE_TYPES in the script)")
 
     if kind == "rop":
-        network = _container(caches, "ropnet", "write_caches")
-        created = []
-        for cache, rop in pairs:
-            fetch = network.createNode("fetch", f"fetch_{cache.name()}")
-            _setPath(fetch, ("source",), ("Source",), rop.path())
-            if created:
-                fetch.setInput(0, created[-1])
-            created.append(fetch)
-        _stack(created)
-        created[-1].setCurrent(True, clear_all_selected=True)
-        return network, created, skipped
+        return _ropNetwork(caches, pairs, skipped)
 
     network = _container(caches, "topnet", "write_caches")
     created, chain = [], []

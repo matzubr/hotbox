@@ -539,9 +539,28 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     second.setDisplayFlag.assert_called_with(True)
 
     created.clear()
+    button = MagicMock()
+    monkeypatch.setattr(hou, "ButtonParmTemplate", button, raising=False)
     _net, fetches, _ = caches.buildCacheNetwork([mesh, sim], "rop", {"rop_geometry": caches.SELF})
-    assert [n.type_ for n in created] == ["fetch", "fetch"]
-    assert fetches[1].inputs_[0] is fetches[0]
+    assert [n.type_ for n in created] == ["fetch", "fetch", "merge"]
+    merge = created[2]
+    assert merge.inputs_ == {0: fetches[0], 1: fetches[1]} and fetches[1].inputs_ == {}, "side by side, sim first"
+    template = button.call_args
+    assert template.args[:2] == (caches.WRITE_BUTTON, caches.WRITE_LABEL)
+    callback = template.kwargs["script_callback"]
+    assert callback == caches.writeCallback("write_all")
+    ran = []
+    rops = {"/g/sim": MagicMock(), "/g/mesh": MagicMock()}
+    for fetch, source in zip(fetches, ("/g/sim", "/g/mesh")):
+        fetch.evalParm.return_value = source
+        fetch.node.side_effect = lambda path: rops[path]
+        rops[source].render.side_effect = lambda source=source, **kw: ran.append(source)
+    merge.inputs.return_value = fetches
+    owner = MagicMock()
+    owner.node.return_value = merge
+    exec(callback, {"hou": hou, "kwargs": {"node": owner}})
+    assert ran == ["/g/sim", "/g/mesh"], "each cache's own ROP, in the write order"
+    container.setParmTemplateGroup.assert_called_once()
 
 
 def test_menu_set_by_label():
