@@ -109,7 +109,7 @@ def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
         else:
             pairs.append((cache, rop))
     if not pairs:
-        raise ValueError("None of the selected nodes is a cache node (see CACHE_TYPES in the script)")
+        raise ValueError("No cache ROP found in the selected nodes (see CACHE_TYPES in the script)")
 
     if kind == "rop":
         network = _container(caches, "ropnet", "write_caches")

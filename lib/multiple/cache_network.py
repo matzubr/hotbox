@@ -18,7 +18,7 @@ CACHE_TYPES = {
     "filecache": caches.AUTO,
     "labs::filecache": caches.AUTO,
     "vellumio": caches.AUTO,
-    "s_cache": caches.AUTO,  # studio cache HDA, any version (s_cache::11.0)
+    "s_cache": "ropnet1/geo",  # studio cache HDA, any version (s_cache::11.0): the Geometry ROP in its ropnet
     "rop_geometry": caches.SELF,
     "rop_alembic": caches.SELF,
 }
@@ -39,7 +39,7 @@ def main():
         return
     message = f"{network.path()}: {len(created)} cache(s)"
     if skipped:
-        message += f", skipped (not in CACHE_TYPES): {', '.join(n.name() for n in skipped)}"
+        message += f", skipped (no ROP found, see CACHE_TYPES): {', '.join(n.name() for n in skipped)}"
     hou.ui.setStatusMessage(message, severity=hou.severityType.Warning if skipped else hou.severityType.Message)
 
 

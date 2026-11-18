@@ -494,8 +494,8 @@ def test_cache_rop_is_found_by_the_type_list(hou, monkeypatch):
     assert caches.ropOf(_cache("/obj/geo1/box", "box"), types) is None
     versioned = _cache("/obj/geo1/s_cache1", "s_cache")  # s_cache::11.0: the version doesn't matter
     versioned.type.return_value.nameComponents.return_value = ("", "", "s_cache", "11.0")
-    versioned.allSubChildren.return_value = [render]
-    assert caches.ropOf(versioned, {"s_cache": caches.AUTO}) is render
+    assert caches.ropOf(versioned, {"s_cache": "ropnet1/geo"}) is versioned.node.return_value
+    versioned.node.assert_called_with("ropnet1/geo")
 
 
 def test_caches_in_dependency_order():
