@@ -18,6 +18,7 @@ CACHE_TYPES = {
     "filecache": caches.AUTO,
     "labs::filecache": caches.AUTO,
     "vellumio": caches.AUTO,
+    "s_cache": caches.AUTO,  # studio cache HDA, any version (s_cache::11.0)
     "rop_geometry": caches.SELF,
     "rop_alembic": caches.SELF,
 }
