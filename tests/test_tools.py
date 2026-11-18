@@ -548,7 +548,7 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     assert [n.type_ for n in created] == ["fetch", "fetch", "merge"]
     merge = created[2]
     assert merge.inputs_ == {0: fetches[0], 1: fetches[1]} and fetches[1].inputs_ == {}, "side by side, sim first"
-    template = button.call_args
+    template = button.call_args_list[0]
     assert template.args[:2] == (caches.WRITE_BUTTON, caches.WRITE_LABEL)
     callback = template.kwargs["script_callback"]
     assert callback == caches.writeCallback("write_all")
@@ -583,6 +583,23 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     ran.clear()
     exec(callback, {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
     assert ran == ["/g/mesh"], "unchecked cache skipped"
+
+    # Select All / Deselect All: every toggle and every Fetch
+    labels = {c.args[1]: c.kwargs["script_callback"] for c in button.call_args_list}
+    toggles = [MagicMock(), MagicMock(), MagicMock()]
+    for t, name in zip(toggles, (caches.toggleName(0), caches.toggleName(1), "other")):
+        t.name.return_value = name
+    owner.parms.return_value = toggles
+    for fetch in fetches:
+        fetch.bypass.reset_mock()
+    exec(labels["Deselect All"], {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
+    toggles[0].set.assert_called_once_with(0)
+    toggles[1].set.assert_called_once_with(0)
+    toggles[2].set.assert_not_called()
+    assert all(f.bypass.call_args.args == (True,) for f in fetches)
+    exec(labels["Select All"], {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
+    toggles[0].set.assert_called_with(1)
+    assert all(f.bypass.call_args.args == (False,) for f in fetches)
     container.setParmTemplateGroup.assert_called_once()
 
 

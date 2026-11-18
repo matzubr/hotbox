@@ -117,6 +117,12 @@ def toggleCallback(fetch_name: str) -> str:
     return f"kwargs['node'].node({fetch_name!r}).bypass(not kwargs['parm'].eval())"
 
 
+def checkAllCallback(merge_name: str, on: bool) -> str:
+    """Select All / Deselect All: every toggle on/off and every Fetch of the merge (un)bypassed to match"""
+    return (f"[p.set({int(on)}) for p in kwargs['node'].parms() if p.name().startswith('{WRITE_TOGGLE}')]; "
+            f"[f.bypass({not on}) for f in kwargs['node'].node('{merge_name}').inputs() if f is not None]")
+
+
 def toggleName(index: int) -> str:
     return f"{WRITE_TOGGLE}{index + 1}"
 
@@ -135,6 +141,10 @@ def addWriteButton(network, merge, toggles=()) -> None:
             script_callback_language=hou.scriptLanguage.Python,
             help=f"Write {label} with '{WRITE_LABEL}' (off bypasses {fetch.name()})"))
     if toggles:
+        for name, label, on in (("select_all", "Select All", True), ("deselect_all", "Deselect All", False)):
+            templates.append(hou.ButtonParmTemplate(
+                f"{WRITE_TOGGLE}_{name}", label, script_callback=checkAllCallback(merge.name(), on),
+                script_callback_language=hou.scriptLanguage.Python, join_with_next=on))
         templates.append(hou.SeparatorParmTemplate(f"{WRITE_BUTTON}_sep"))
     entries = group.entries()
     for template in templates:
