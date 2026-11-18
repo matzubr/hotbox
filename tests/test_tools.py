@@ -541,6 +541,9 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     created.clear()
     button = MagicMock()
     monkeypatch.setattr(hou, "ButtonParmTemplate", button, raising=False)
+    toggle = MagicMock()
+    monkeypatch.setattr(hou, "ToggleParmTemplate", toggle, raising=False)
+    monkeypatch.setattr(hou, "SeparatorParmTemplate", MagicMock(), raising=False)
     _net, fetches, _ = caches.buildCacheNetwork([mesh, sim], "rop", {"rop_geometry": caches.SELF})
     assert [n.type_ for n in created] == ["fetch", "fetch", "merge"]
     merge = created[2]
@@ -556,10 +559,30 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
         fetch.node.side_effect = lambda path: rops[path]
         rops[source].render.side_effect = lambda source=source, **kw: ran.append(source)
     merge.inputs.return_value = fetches
+    for fetch in fetches:
+        fetch.isBypassed.return_value = False
     owner = MagicMock()
     owner.node.return_value = merge
     exec(callback, {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102 (the button callback as Houdini runs it)
     assert ran == ["/g/sim", "/g/mesh"], "each cache's own ROP, in the write order"
+
+    # a toggle per cache, named after it; off bypasses its Fetch and the button skips it
+    assert [(c.args[0], c.args[1]) for c in toggle.call_args_list] == [
+        (caches.toggleName(0), sim.name()), (caches.toggleName(1), mesh.name())]
+    toggle_callback = toggle.call_args_list[0].kwargs["script_callback"]
+    assert toggle_callback == caches.toggleCallback(fetches[0].name())
+    owner.node.reset_mock()
+    owner.node.return_value = fetches[0]
+    parm = MagicMock()
+    parm.eval.return_value = 0
+    exec(toggle_callback, {"hou": hou, "kwargs": {"node": owner, "parm": parm}})  # noqa: S102
+    owner.node.assert_called_with(fetches[0].name())
+    fetches[0].bypass.assert_called_once_with(True)
+    fetches[0].isBypassed.return_value = True
+    owner.node.return_value = merge
+    ran.clear()
+    exec(callback, {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
+    assert ran == ["/g/mesh"], "unchecked cache skipped"
     container.setParmTemplateGroup.assert_called_once()
 
 

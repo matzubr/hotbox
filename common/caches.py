@@ -99,34 +99,55 @@ def _stack(nodes) -> None:
 
 WRITE_BUTTON = "write_node_by_node"
 WRITE_LABEL = "Write All, Node by Node"
+WRITE_TOGGLE = "write_cache"  # write_cache1, write_cache2...: which caches the button writes
 
 
 def writeCallback(merge_name: str) -> str:
     """Button callback: the ROP behind each Fetch of the merge, in input order, over its own frame range (like Save
-    to Disk on each cache). Plain hou, no hotbox: the button works in a scene opened without it.
+    to Disk on each cache); bypassed Fetches (toggles off) are skipped. Plain hou, no hotbox: the button works in a
+    scene opened without it.
     Not the Merge itself: its Render button goes frame by frame (Houdini's -I), and dependencies may get the
     downstream frame range instead of their own."""
-    return (f"for f in kwargs['node'].node('{merge_name}').inputs(): "
-            "f.node(f.evalParm('source')).render(method=hou.renderMethod.RopByRop)")
+    return (f"[f.node(f.evalParm('source')).render(method=hou.renderMethod.RopByRop) "
+            f"for f in kwargs['node'].node('{merge_name}').inputs() if f is not None and not f.isBypassed()]")
 
 
-def addWriteButton(network, merge) -> None:
-    """A button on top of the network's parameters that writes the caches node by node (writeCallback)"""
+def toggleCallback(fetch_name: str) -> str:
+    """Toggle callback: off bypasses the Fetch (the write button skips it, the network shows it)"""
+    return f"kwargs['node'].node({fetch_name!r}).bypass(not kwargs['parm'].eval())"
+
+
+def toggleName(index: int) -> str:
+    return f"{WRITE_TOGGLE}{index + 1}"
+
+
+def addWriteButton(network, merge, toggles=()) -> None:
+    """On top of the network's parameters: the button that writes the caches node by node (writeCallback) and a
+    toggle per cache, toggles = [(fetch, label)]: which ones the button writes"""
     group = network.parmTemplateGroup()
-    button = hou.ButtonParmTemplate(
+    templates = [hou.ButtonParmTemplate(
         WRITE_BUTTON, WRITE_LABEL, script_callback=writeCallback(merge.name()),
         script_callback_language=hou.scriptLanguage.Python,
-        help="Writes the caches one after another, each over its own frame range (Esc stops)")
+        help="Writes the checked caches one after another, each over its own frame range (Esc stops)")]
+    for k, (fetch, label) in enumerate(toggles):
+        templates.append(hou.ToggleParmTemplate(
+            toggleName(k), label, default_value=True, script_callback=toggleCallback(fetch.name()),
+            script_callback_language=hou.scriptLanguage.Python,
+            help=f"Write {label} with '{WRITE_LABEL}' (off bypasses {fetch.name()})"))
+    if toggles:
+        templates.append(hou.SeparatorParmTemplate(f"{WRITE_BUTTON}_sep"))
     entries = group.entries()
-    if entries:
-        group.insertBefore(entries[0], button)
-    else:
-        group.append(button)
+    for template in templates:
+        if entries:
+            group.insertBefore(entries[0], template)
+        else:
+            group.append(template)
     network.setParmTemplateGroup(group)
 
 
 def _ropNetwork(caches, pairs, skipped) -> tuple:
-    """A Fetch per cache side by side into a Merge (inputs in the write order) and the node by node button"""
+    """A Fetch per cache side by side into a Merge (inputs in the write order), the node by node button and a toggle
+    per cache"""
     network = _container(caches, "ropnet", "write_caches")
     created = []
     for k, (cache, rop) in enumerate(pairs):
@@ -140,7 +161,7 @@ def _ropNetwork(caches, pairs, skipped) -> tuple:
     merge.setPosition(hou.Vector2(STACK_X + 1.5 * (len(created) - 1), -2))
     merge.setComment(f"Write with '{WRITE_LABEL}' on {network.name()}:\nits Render button goes frame by frame")
     merge.setGenericFlag(hou.nodeFlag.DisplayComment, True)
-    addWriteButton(network, merge)
+    addWriteButton(network, merge, [(fetch, cache.name()) for fetch, (cache, _rop) in zip(created, pairs)])
     merge.setCurrent(True, clear_all_selected=True)
     network.setCurrent(True, clear_all_selected=True)
     return network, created, skipped
