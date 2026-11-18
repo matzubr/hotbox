@@ -628,3 +628,18 @@ def test_one_selected_s_cache_shows_the_cache_buttons():
     in_context, _root = scripts.scriptsForContext(library, "s_cache")
     assert {s.label for s in in_context} >= {"Cache Network", "Open Folder", "Frame Range", "Version Up", "Volume to Solaris"}
     assert {s.group for s in in_context if s.label == "Cache Network"} == {"Cache"}
+
+
+def test_bp_filecache_is_a_cache_everywhere(hou, monkeypatch):
+    """bp::filecache::1.0: a studio File Cache, found like File Cache by every cache / path tool"""
+    import ast
+
+    from hotbox.common import caches, paths
+
+    source = (ROOT / "lib" / "multiple" / "cache_network.py").read_text(encoding="utf-8")
+    table = next(n.value for n in ast.parse(source).body if isinstance(n, ast.Assign) and n.targets[0].id == "CACHE_TYPES")
+    assert "bp::filecache" in [k.value for k in table.keys]
+    node = _cache("/obj/geo1/filecache1", "filecache", namespace="bp")
+    node.type.return_value.nameComponents.return_value = ("", "bp", "filecache", "1.0")
+    assert caches.typeKey(node) == "bp::filecache"
+    assert paths.RELOAD_TYPES["bp::filecache"] == "reload" and "bp::filecache" in paths.CACHE_PATH_TYPES

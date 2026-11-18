@@ -97,7 +97,7 @@ def _expandMultiparms(node, names: list[str]) -> list[str]:
 # Studio cache HDAs whose path is not a file reference parameter (built from parts, a plain string...):
 # type name without the version (s_cache::11.0 -> s_cache) -> the names of its path parameters; empty: every string
 # parameter whose value looks like a cache file (CACHE_SUFFIXES)
-CACHE_PATH_TYPES: dict[str, tuple[str, ...]] = {"s_cache": ()}
+CACHE_PATH_TYPES: dict[str, tuple[str, ...]] = {"s_cache": (), "bp::filecache": ()}
 CACHE_SUFFIXES = (".bgeo.sc", ".bgeo", ".bgeo.gz", ".bgeo.lzma", ".geo", ".vdb", ".abc", ".usd", ".usdc", ".usda",
                   ".usdz", ".sim", ".simdata", ".obj", ".fbx", ".ply", ".bhclassic", ".hclassic", ".rs", ".ass")
 
@@ -213,7 +213,7 @@ def missingFiles() -> list[tuple]:
 RELOAD_BUTTONS = ("reload", "reloadgeo", "reloadfile")
 # Cache nodes found by type, not by a file parameter (their path is an output, hidden or built from parts):
 # type name without the version (s_cache::11.0 -> s_cache) -> their reload button
-RELOAD_TYPES = {"s_cache": "reload"}
+RELOAD_TYPES = {"s_cache": "reload", "bp::filecache": "reload"}
 
 
 def _typeKey(node_type) -> str:

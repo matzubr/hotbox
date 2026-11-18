@@ -18,6 +18,7 @@ from hotbox.common import caches, panes
 CACHE_TYPES = {
     "filecache": caches.AUTO,
     "labs::filecache": caches.AUTO,
+    "bp::filecache": caches.AUTO,  # studio File Cache (bp::filecache::1.0), same insides as File Cache
     "vellumio": caches.AUTO,
     "s_cache": "ropnet1/geo",  # studio cache HDA, any version (s_cache::11.0): the Geometry ROP in its ropnet
     "rop_geometry": caches.SELF,
