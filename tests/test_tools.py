@@ -601,3 +601,11 @@ def test_script_description_from_comment_or_docstring(tmp_path):
     assert scripts.scriptDescription(nothing) is None
     library = {s.relpath: s for s in scripts.scanLibrary([lib], "all")}
     assert scripts.worksOn(library["a.py"]) == "Nothing selected, any network"
+
+
+def test_one_selected_s_cache_shows_the_cache_buttons():
+    """A studio cache HDA (s_cache::11.0): its type folder has the File Cache buttons that work on any cache"""
+    library = scripts.scanLibrary([ROOT / "lib"], "single")
+    in_context, _root = scripts.scriptsForContext(library, "s_cache")
+    assert {s.label for s in in_context} >= {"Cache Network", "Open Folder", "Frame Range"}
+    assert {s.group for s in in_context if s.label == "Cache Network"} == {"Cache"}
