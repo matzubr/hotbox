@@ -79,11 +79,11 @@ everyone with `HOTBOX_PACKAGES = "studio-name"`.
 | Where | Buttons |
 |---|---|
 | **Solaris**, nothing selected | Fetch · SOP Import with Karma velocity blur · Material Library · Jump to Material · **USD Collections**: From Picked, From Pattern (with a count of what it picks) · Material Report · Set Variant · Prims to Node… · Stage Files (every layer, reference and texture; missing ones first) · Show as USDA · Matte & Phantom (Assign Material → Prune → Karma matte → Karma phantom) · Prim Paths ([DionysUSD](https://github.com/matzubr/DionysUSD)) |
-| SOPs, nulls, caches | To Solaris · Volume to Solaris · Cache Network · Frame Range · Version Up · Open Folder · Object Merge |
+| SOPs, nulls, caches | To Solaris · Volume to Solaris · Cache Network · Frame Range · Version Up · Clean Old Versions · Open Folder · Object Merge |
 | any node | Create Null / Wrangle / Vop · Network Box · Sticky Note · Snap to Grid · Color by Type · Copy Path · Convert to `$JOB` / `$FILM` · Select Same / Modified |
 | wrangles, OpenCL, Python | Snippets ([mnemo](https://github.com/matzubr/mnemo)) |
 | cameras, lights | Look Through · Lock · Dolly Zoom · Focus Target · Bake |
-| anywhere | Flipbook ([DinoWrite](https://github.com/matzubr/DinoWrite)) · Missing Files · Reload Caches · Save Incremental · Recover Crash |
+| anywhere | Flipbook ([DinoWrite](https://github.com/matzubr/DinoWrite)) · Missing Files · Cache Report · Reload Caches · Save Incremental · Recover Crash |
 
 Ideas borrowed from other libraries ship as packages named after them (`qLib`, `Aelib`, `LV-Tools`, `BeeHou`…), all
 off by default. The code is HotBox's own. Shared pieces live in `common/` (`usd`, `solaris`, `nodes`, `paths`,

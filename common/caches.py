@@ -1,26 +1,30 @@
 """ROP / TOP networks that write cache nodes (File Cache and friends) one after another."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import hou
 
+from . import cachetypes, cachewriter
 from .nodes import freePosition
 
-AUTO = None  # the ROP inside the cache node is found by itself (the first ROP among its children)
-SELF = "."  # the node is a ROP itself (ROP Geometry Output SOP)
+AUTO, SELF = cachetypes.AUTO, cachetypes.SELF
 
 
 def typeKey(node) -> str:
     """Type name without the version: 'filecache', 'labs::filecache', 'rop_geometry'"""
-    _scope, namespace, name, _version = node.type().nameComponents()
-    return f"{namespace}::{name}" if namespace else name
+    return cachetypes.typeKey(node.type())
 
 
 def _isRop(node) -> bool:
     return isinstance(node, hou.RopNode)
 
 
-def ropOf(node, cache_types: dict):
-    """The ROP that writes the cache of the node: how to find it is cache_types[type]; None for other nodes"""
+def ropOf(node, cache_types: dict | None = None):
+    """The ROP that writes the cache of the node: how to find it is cache_types[type] (default: the rop of
+    cachetypes.CACHE_TYPES); None for other nodes"""
+    if cache_types is None:
+        cache_types = {key: t.rop for key, t in cachetypes.CACHE_TYPES.items()}
     key = typeKey(node)
     if key not in cache_types:
         return None
@@ -98,89 +102,123 @@ def _stack(nodes) -> None:
 
 
 WRITE_BUTTON = "write_node_by_node"
-WRITE_LABEL = "Write All, Node by Node"
+WRITE_LABEL = "Write Checked, Node by Node"
 WRITE_TOGGLE = "write_cache"  # write_cache1, write_cache2...: which caches the button writes
+INTERFACE = "hotbox_write"  # the folder with the buttons on top of the network's parameters
+OPTIONS = (  # (parameter, label, default, help)
+    (cachewriter.SKIP_EXISTING, "Skip Frames on Disk", False,
+     "Write only the frames that have no file yet; a cache with every frame on disk is skipped"),
+    (cachewriter.VERSION_UP, "Version Up First", False,
+     "Each cache goes to its next version before writing: the last one isn't overwritten"),
+    (cachewriter.RELOAD_AFTER, "Reload After Writing", True,
+     "Press the cache node's Reload after it is written: the next cache reads the new files"),
+    (cachewriter.KEEP_GOING, "Continue After an Error", True,
+     "A cache that fails doesn't stop the ones after it"),
+)
 
 
-def writeCallback(merge_name: str) -> str:
-    """Button callback: the ROP behind each Fetch of the merge, in input order, over its own frame range (like Save
-    to Disk on each cache); bypassed Fetches (toggles off) are skipped. Plain hou, no hotbox: the button works in a
-    scene opened without it.
-    Not the Merge itself: its Render button goes frame by frame (Houdini's -I), and dependencies may get the
-    downstream frame range instead of their own."""
-    return (f"[f.node(f.evalParm('source')).render(method=hou.renderMethod.RopByRop) "
-            f"for f in kwargs['node'].node('{merge_name}').inputs() if f is not None and not f.isBypassed()]")
-
-
-def toggleCallback(fetch_name: str) -> str:
-    """Toggle callback: off bypasses the Fetch (the write button skips it, the network shows it)"""
-    return f"kwargs['node'].node({fetch_name!r}).bypass(not kwargs['parm'].eval())"
-
-
-def checkAllCallback(merge_name: str, on: bool) -> str:
-    """Select All / Deselect All: every toggle on/off and every Fetch of the merge (un)bypassed to match"""
-    return (f"[p.set({int(on)}) for p in kwargs['node'].parms() if p.name().startswith('{WRITE_TOGGLE}')]; "
-            f"[f.bypass({not on}) for f in kwargs['node'].node('{merge_name}').inputs() if f is not None]")
+def writerSource() -> str:
+    """The writer the network's buttons run, stored in the scene (works without hotbox)"""
+    return Path(cachewriter.__file__).read_text(encoding="utf-8")
 
 
 def toggleName(index: int) -> str:
     return f"{WRITE_TOGGLE}{index + 1}"
 
 
-def addWriteButton(network, merge, toggles=()) -> None:
-    """On top of the network's parameters: the button that writes the caches node by node (writeCallback) and a
-    toggle per cache, toggles = [(fetch, label)]: which ones the button writes"""
+def _button(name: str, label: str, action: str, help_text: str = "", join: bool = False):
+    return hou.ButtonParmTemplate(name, label, script_callback=cachewriter.callback(action),
+                                  script_callback_language=hou.scriptLanguage.Python, help=help_text,
+                                  join_with_next=join)
+
+
+def buildInterface(network) -> None:
+    """(Re)build the folder on top of the network's parameters: write / refresh buttons, options, Select All /
+    Deselect All and a toggle per Fetch of the Merge labeled with what is on disk. Options keep their values, the
+    toggles follow the bypass flags. The writer the buttons run is stored (updated) in the network's user data."""
     group = network.parmTemplateGroup()
-    templates = [hou.ButtonParmTemplate(
-        WRITE_BUTTON, WRITE_LABEL, script_callback=writeCallback(merge.name()),
-        script_callback_language=hou.scriptLanguage.Python,
-        help="Writes the checked caches one after another, each over its own frame range (Esc stops)")]
-    for k, (fetch, label) in enumerate(toggles):
-        templates.append(hou.ToggleParmTemplate(
-            toggleName(k), label, default_value=True, script_callback=toggleCallback(fetch.name()),
-            script_callback_language=hou.scriptLanguage.Python,
-            help=f"Write {label} with '{WRITE_LABEL}' (off bypasses {fetch.name()})"))
-    if toggles:
-        for name, label, on in (("select_all", "Select All", True), ("deselect_all", "Deselect All", False)):
-            templates.append(hou.ButtonParmTemplate(
-                f"{WRITE_TOGGLE}_{name}", label, script_callback=checkAllCallback(merge.name(), on),
-                script_callback_language=hou.scriptLanguage.Python, join_with_next=on))
-        templates.append(hou.SeparatorParmTemplate(f"{WRITE_BUTTON}_sep"))
+    old = {name: network.parm(name).eval() for name, *_ in OPTIONS if network.parm(name) is not None}
+    if group.find(INTERFACE) is not None:
+        group.remove(INTERFACE)
+    folder = hou.FolderParmTemplate(INTERFACE, "Write Caches", folder_type=hou.folderType.Simple)
+    folder.addParmTemplate(_button(WRITE_BUTTON, WRITE_LABEL, "write", join=True, help_text=(
+        "Writes the checked caches one after another, each over its own frame range (Esc stops)")))
+    folder.addParmTemplate(_button(f"{INTERFACE}_refresh", "Refresh", "refresh",
+                                   "Update the toggles: frames and size on disk, bypassed Fetches unchecked"))
+    for name, label, default, help_text in OPTIONS:
+        folder.addParmTemplate(hou.ToggleParmTemplate(name, label, default_value=default, help=help_text))
+    folder.addParmTemplate(hou.SeparatorParmTemplate(f"{INTERFACE}_sep"))
+    folder.addParmTemplate(_button(f"{WRITE_TOGGLE}_select_all", "Select All", "all", join=True))
+    folder.addParmTemplate(_button(f"{WRITE_TOGGLE}_deselect_all", "Deselect All", "none"))
+    fetches = cachewriter.fetches(network)
+    for k, fetch in enumerate(fetches):
+        folder.addParmTemplate(hou.ToggleParmTemplate(
+            toggleName(k), cachewriter.label(fetch), default_value=True, tags={cachewriter.TOGGLE_TAG: fetch.name()},
+            script_callback=cachewriter.callback("toggle"), script_callback_language=hou.scriptLanguage.Python,
+            help=f"Write it with '{WRITE_LABEL}' (off bypasses {fetch.name()})"))
     entries = group.entries()
-    for template in templates:
-        if entries:
-            group.insertBefore(entries[0], template)
-        else:
-            group.append(template)
+    if entries:
+        group.insertBefore(entries[0], folder)
+    else:
+        group.append(folder)
     network.setParmTemplateGroup(group)
+    for name, value in old.items():  # a parameter added again may come back with its default
+        network.parm(name).set(value)
+    for k, fetch in enumerate(fetches):
+        network.parm(toggleName(k)).set(int(not fetch.isBypassed()))
+    network.setUserData(cachewriter.USER_DATA, writerSource())
 
 
-def _ropNetwork(caches, pairs, skipped) -> tuple:
-    """A Fetch per cache side by side into a Merge (inputs in the write order), the node by node button and a toggle
-    per cache"""
-    network = _container(caches, "ropnet", "write_caches")
-    created = []
-    for k, (cache, rop) in enumerate(pairs):
+def isWriteNetwork(node) -> bool:
+    try:
+        return isinstance(node.userData(cachewriter.USER_DATA), str)
+    except (AttributeError, hou.OperationFailed):
+        return False
+
+
+def writeNetworks(parent) -> list:
+    """The ROP networks Cache Network made in the network"""
+    return [node for node in parent.children() if isWriteNetwork(node)]
+
+
+def addToRopNetwork(network, pairs) -> tuple[list, list]:
+    """A Fetch per (cache, ROP) into the Merge, after the ones there; a cache already in it is left out.
+    Returns ([new Fetches], [caches already in the network])."""
+    merge = network.node(cachewriter.MERGE)
+    if merge is None:
+        merge = network.createNode("merge", cachewriter.MERGE)
+        merge.setComment(f"Write with '{WRITE_LABEL}' on {network.name()}:\nits Render button goes frame by frame")
+        merge.setGenericFlag(hou.nodeFlag.DisplayComment, True)
+    have = {fetch.evalParm("source") for fetch in cachewriter.fetches(network)}
+    created, already = [], []
+    for cache, rop in pairs:
+        if rop.path() in have:
+            already.append(cache)
+            continue
         fetch = network.createNode("fetch", f"fetch_{cache.name()}")
         _setPath(fetch, ("source",), ("Source",), rop.path())
-        fetch.setPosition(hou.Vector2(STACK_X + 3.0 * k, 0))
+        cache_type = cachetypes.cacheType(cache)
+        version = cachetypes.versionParm(cache) if cache_type is None or cache_type.rop != cachetypes.SELF else None
+        fetch.setUserData(cachewriter.CACHE_KEY, cache.path())
+        fetch.setUserData(cachewriter.VERSION_KEY, version.name() if version is not None else "")
+        fetch.setUserData(cachewriter.RELOAD_KEY, cache_type.reload if cache_type is not None else "")
+        index = len(merge.inputs())
+        merge.setInput(index, fetch)
+        fetch.setPosition(hou.Vector2(STACK_X + 3.0 * index, 0))
         created.append(fetch)
-    merge = network.createNode("merge", "write_all")
-    for k, fetch in enumerate(created):
-        merge.setInput(k, fetch)
-    merge.setPosition(hou.Vector2(STACK_X + 1.5 * (len(created) - 1), -2))
-    merge.setComment(f"Write with '{WRITE_LABEL}' on {network.name()}:\nits Render button goes frame by frame")
-    merge.setGenericFlag(hou.nodeFlag.DisplayComment, True)
-    addWriteButton(network, merge, [(fetch, cache.name()) for fetch, (cache, _rop) in zip(created, pairs)])
+    merge.setPosition(hou.Vector2(STACK_X + 1.5 * (len(merge.inputs()) - 1), -2))
+    buildInterface(network)
     merge.setCurrent(True, clear_all_selected=True)
     network.setCurrent(True, clear_all_selected=True)
-    return network, created, skipped
+    return created, already
 
 
-def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
-    """kind 'rop': a ROP network with a Fetch per cache into a Merge, written node by node by its button.
+def buildCacheNetwork(caches, kind: str, cache_types: dict | None = None, network=None) -> tuple:
+    """kind 'rop': a ROP network (new, or the given one: added to it) with a Fetch per cache into a Merge,
+    written node by node by its button.
     kind 'top': a TOP network with a ROP Fetch per cache, Wait for All between them.
-    The network goes next to the caches. Returns (network, [created nodes], [caches skipped, no ROP])."""
+    A new network goes next to the caches. cache_types: type key -> where its ROP is (default cachetypes).
+    Returns (network, [created nodes], [caches skipped, no ROP], [caches already in the network])."""
     pairs, skipped = [], []
     for cache in dependencyOrder(caches):
         rop = ropOf(cache, cache_types)
@@ -189,10 +227,12 @@ def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
         else:
             pairs.append((cache, rop))
     if not pairs:
-        raise ValueError("No cache ROP found in the selected nodes (see CACHE_TYPES in the script)")
+        raise ValueError("No cache ROP found in the selected nodes (see common/cachetypes.py)")
 
     if kind == "rop":
-        return _ropNetwork(caches, pairs, skipped)
+        network = network or _container(caches, "ropnet", "write_caches")
+        created, already = addToRopNetwork(network, pairs)
+        return network, created, skipped, already
 
     network = _container(caches, "topnet", "write_caches")
     created, chain = [], []
@@ -210,4 +250,53 @@ def buildCacheNetwork(caches, kind: str, cache_types: dict) -> tuple:
     _stack(chain)
     created[-1].setDisplayFlag(True)
     created[-1].setCurrent(True, clear_all_selected=True)
-    return network, created, skipped
+    return network, created, skipped, []
+
+
+def chooseRopNetwork(parent):
+    """An existing write network of the parent to add to, None for a new one, False when cancelled"""
+    existing = writeNetworks(parent)
+    if not existing:
+        return None
+    if len(existing) == 1:
+        name = existing[0].name()
+        choice = hou.ui.displayMessage(f"{parent.path()} already has the ROP network {name}.", title="Cache Network",
+                                       buttons=(f"Add to {name}", "New ROP Network", "Cancel"), default_choice=0,
+                                       close_choice=2)
+        return (existing[0], None, False)[choice]
+    picked = hou.ui.selectFromList(["New ROP network", *(n.name() for n in existing)], exclusive=True,
+                                   default_choices=(1,), title="Cache Network", message="Add the caches to:",
+                                   column_header="ROP network")
+    if not picked:
+        return False
+    return existing[picked[0] - 1] if picked[0] else None
+
+
+def runCacheNetwork(nodes) -> None:
+    """Cache Network on the nodes: asks TOP / ROP network (and for ROP: a new one or an existing one), builds it"""
+    from . import panes
+
+    if not nodes:
+        return
+    choice = hou.ui.displayMessage(f"Write {len(nodes)} cache node(s) with:", buttons=("TOP network", "ROP network",
+                                   "Cancel"), default_choice=0, close_choice=2, title="Cache Network")
+    if choice == 2:
+        return
+    network = None
+    if choice == 1:
+        network = chooseRopNetwork(nodes[0].parent())
+        if network is False:
+            return
+    try:
+        network, created, skipped, already = buildCacheNetwork(nodes, ("top", "rop")[choice], network=network)
+    except ValueError as e:
+        panes.warn(str(e))
+        return
+    message = f"{network.path()}: {len(created)} cache(s) added"
+    if choice == 1:
+        message += f", write with '{WRITE_LABEL}' on it"
+    if already:
+        message += f", already in it: {', '.join(n.name() for n in already)}"
+    if skipped:
+        message += f", skipped (no ROP found, see common/cachetypes.py): {', '.join(n.name() for n in skipped)}"
+    hou.ui.setStatusMessage(message, severity=hou.severityType.Warning if skipped else hou.severityType.Message)

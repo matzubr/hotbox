@@ -8,6 +8,9 @@ import sys
 
 import hou
 
+from . import cachewriter
+from .cachetypes import CACHE_TYPES, typeKey
+
 
 def replacePrefix(path: str, root: str, variable: str, ignore_case: bool | None = None) -> str | None:
     """'D:\\Proj/geo' with root 'd:/proj' -> '$JOB/geo'. None when path is not inside root.
@@ -94,10 +97,10 @@ def _expandMultiparms(node, names: list[str]) -> list[str]:
     return result
 
 
-# Studio cache HDAs whose path is not a file reference parameter (built from parts, a plain string...):
-# type name without the version (s_cache::11.0 -> s_cache) -> the names of its path parameters; empty: every string
-# parameter whose value looks like a cache file (CACHE_SUFFIXES)
-CACHE_PATH_TYPES: dict[str, tuple[str, ...]] = {"s_cache": (), "bp::filecache": ()}
+# Cache HDAs whose path is not a file reference parameter (built from parts, a plain string...), from
+# cachetypes.CACHE_TYPES: type key -> the names of its path parameters; empty: every string parameter whose value
+# looks like a cache file (CACHE_SUFFIXES)
+CACHE_PATH_TYPES: dict[str, tuple[str, ...]] = {k: t.paths for k, t in CACHE_TYPES.items() if t.paths is not None}
 CACHE_SUFFIXES = (".bgeo.sc", ".bgeo", ".bgeo.gz", ".bgeo.lzma", ".geo", ".vdb", ".abc", ".usd", ".usdc", ".usda",
                   ".usdz", ".sim", ".simdata", ".obj", ".fbx", ".ply", ".bhclassic", ".hclassic", ".rs", ".ass")
 
@@ -109,7 +112,7 @@ def looksLikeCacheFile(path: str) -> bool:
 def _cachePathParms(node, include_hidden: bool) -> list[str]:
     """Path parameters of a CACHE_PATH_TYPES node: the listed names, else guessed from the values"""
     try:
-        names = CACHE_PATH_TYPES.get(_typeKey(node.type()))
+        names = CACHE_PATH_TYPES.get(typeKey(node.type()))
     except (AttributeError, TypeError, ValueError, hou.OperationFailed):
         return []
     if names is None:
@@ -211,14 +214,9 @@ def missingFiles() -> list[tuple]:
 
 
 RELOAD_BUTTONS = ("reload", "reloadgeo", "reloadfile")
-# Cache nodes found by type, not by a file parameter (their path is an output, hidden or built from parts):
-# type name without the version (s_cache::11.0 -> s_cache) -> their reload button
-RELOAD_TYPES = {"s_cache": "reload", "bp::filecache": "reload"}
-
-
-def _typeKey(node_type) -> str:
-    _scope, namespace, name, _version = node_type.nameComponents()
-    return f"{namespace}::{name}" if namespace else name
+# Cache nodes found by type, not by a file parameter (their path is an output, hidden or built from parts), from
+# cachetypes.CACHE_TYPES: type key -> their reload button
+RELOAD_TYPES = {k: t.reload for k, t in CACHE_TYPES.items() if t.reload}
 
 
 def typedReloadNodes(types=None) -> list[tuple]:
@@ -227,7 +225,7 @@ def typedReloadNodes(types=None) -> list[tuple]:
     found = []
     for category in hou.nodeTypeCategories().values():
         for node_type in category.nodeTypes().values():
-            name = types.get(_typeKey(node_type))
+            name = types.get(typeKey(node_type))
             if name:
                 found += [(node, name) for node in node_type.instances()]
     return found
@@ -305,13 +303,7 @@ def cacheFiles(parm) -> list[str]:
     return [os.path.join(folder, name) for name in names if regex.match(name)]
 
 
-def formatSize(size: float) -> str:
-    """1536 -> '1.5 KB'"""
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if size < 1024 or unit == "TB":
-            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
+formatSize = cachewriter.formatSize  # 1536 -> '1.5 KB'
 
 
 def isImageFile(path: str) -> bool:

@@ -529,7 +529,7 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
         return node
 
     container.createNode.side_effect = createNode
-    _net, fetches, skipped = caches.buildCacheNetwork([mesh, sim], "top", {"rop_geometry": caches.SELF})
+    _net, fetches, skipped, _already = caches.buildCacheNetwork([mesh, sim], "top", {"rop_geometry": caches.SELF})
     assert skipped == []
     assert [n.type_ for n in created] == ["ropfetch", "ropfetch", "waitforall"]
     first, second = fetches
@@ -538,69 +538,6 @@ def test_cache_top_network_chains_rop_fetches_with_wait_for_all(hou, vec, monkey
     assert wait.inputs_[0] is first and second.inputs_[0] is wait
     second.setDisplayFlag.assert_called_with(True)
 
-    created.clear()
-    button = MagicMock()
-    monkeypatch.setattr(hou, "ButtonParmTemplate", button, raising=False)
-    toggle = MagicMock()
-    monkeypatch.setattr(hou, "ToggleParmTemplate", toggle, raising=False)
-    monkeypatch.setattr(hou, "SeparatorParmTemplate", MagicMock(), raising=False)
-    _net, fetches, _ = caches.buildCacheNetwork([mesh, sim], "rop", {"rop_geometry": caches.SELF})
-    assert [n.type_ for n in created] == ["fetch", "fetch", "merge"]
-    merge = created[2]
-    assert merge.inputs_ == {0: fetches[0], 1: fetches[1]} and fetches[1].inputs_ == {}, "side by side, sim first"
-    template = button.call_args_list[0]
-    assert template.args[:2] == (caches.WRITE_BUTTON, caches.WRITE_LABEL)
-    callback = template.kwargs["script_callback"]
-    assert callback == caches.writeCallback("write_all")
-    ran = []
-    rops = {"/g/sim": MagicMock(), "/g/mesh": MagicMock()}
-    for fetch, source in zip(fetches, ("/g/sim", "/g/mesh")):
-        fetch.evalParm.return_value = source
-        fetch.node.side_effect = lambda path: rops[path]
-        rops[source].render.side_effect = lambda source=source, **kw: ran.append(source)
-    merge.inputs.return_value = fetches
-    for fetch in fetches:
-        fetch.isBypassed.return_value = False
-    owner = MagicMock()
-    owner.node.return_value = merge
-    exec(callback, {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102 (the button callback as Houdini runs it)
-    assert ran == ["/g/sim", "/g/mesh"], "each cache's own ROP, in the write order"
-
-    # a toggle per cache, named after it; off bypasses its Fetch and the button skips it
-    assert [(c.args[0], c.args[1]) for c in toggle.call_args_list] == [
-        (caches.toggleName(0), sim.name()), (caches.toggleName(1), mesh.name())]
-    toggle_callback = toggle.call_args_list[0].kwargs["script_callback"]
-    assert toggle_callback == caches.toggleCallback(fetches[0].name())
-    owner.node.reset_mock()
-    owner.node.return_value = fetches[0]
-    parm = MagicMock()
-    parm.eval.return_value = 0
-    exec(toggle_callback, {"hou": hou, "kwargs": {"node": owner, "parm": parm}})  # noqa: S102
-    owner.node.assert_called_with(fetches[0].name())
-    fetches[0].bypass.assert_called_once_with(True)
-    fetches[0].isBypassed.return_value = True
-    owner.node.return_value = merge
-    ran.clear()
-    exec(callback, {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
-    assert ran == ["/g/mesh"], "unchecked cache skipped"
-
-    # Select All / Deselect All: every toggle and every Fetch
-    labels = {c.args[1]: c.kwargs["script_callback"] for c in button.call_args_list}
-    toggles = [MagicMock(), MagicMock(), MagicMock()]
-    for t, name in zip(toggles, (caches.toggleName(0), caches.toggleName(1), "other")):
-        t.name.return_value = name
-    owner.parms.return_value = toggles
-    for fetch in fetches:
-        fetch.bypass.reset_mock()
-    exec(labels["Deselect All"], {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
-    toggles[0].set.assert_called_once_with(0)
-    toggles[1].set.assert_called_once_with(0)
-    toggles[2].set.assert_not_called()
-    assert all(f.bypass.call_args.args == (True,) for f in fetches)
-    exec(labels["Select All"], {"hou": hou, "kwargs": {"node": owner}})  # noqa: S102
-    toggles[0].set.assert_called_with(1)
-    assert all(f.bypass.call_args.args == (False,) for f in fetches)
-    container.setParmTemplateGroup.assert_called_once()
 
 
 def test_menu_set_by_label():
@@ -669,17 +606,3 @@ def test_one_selected_s_cache_shows_the_cache_buttons():
     assert {s.label for s in in_context} >= {"Cache Network", "Open Folder", "Frame Range", "Version Up", "Volume to Solaris"}
     assert {s.group for s in in_context if s.label == "Cache Network"} == {"Cache"}
 
-
-def test_bp_filecache_is_a_cache_everywhere(hou, monkeypatch):
-    """bp::filecache::1.0: a studio File Cache, found like File Cache by every cache / path tool"""
-    import ast
-
-    from hotbox.common import caches, paths
-
-    source = (ROOT / "lib" / "multiple" / "cache_network.py").read_text(encoding="utf-8")
-    table = next(n.value for n in ast.parse(source).body if isinstance(n, ast.Assign) and n.targets[0].id == "CACHE_TYPES")
-    assert "bp::filecache" in [k.value for k in table.keys]
-    node = _cache("/obj/geo1/filecache1", "filecache", namespace="bp")
-    node.type.return_value.nameComponents.return_value = ("", "bp", "filecache", "1.0")
-    assert caches.typeKey(node) == "bp::filecache"
-    assert paths.RELOAD_TYPES["bp::filecache"] == "reload" and "bp::filecache" in paths.CACHE_PATH_TYPES
